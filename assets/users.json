@@ -8,5 +8,15 @@
     "id": 2,
     "name": "Dana",
     "email": "dana@mail.com"
+  },
+  {
+    "id": 3,
+    "name": "yaycat",
+    "email": "alimzhan@mail.com"
+  },
+  {
+    "id": 2,
+    "name": "alimzhan",
+    "email": "alimzhan@mail.com"
   }
 ]

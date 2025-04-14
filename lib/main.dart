@@ -1,7 +1,6 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter/services.dart';
+import 'package:flutter_tts/flutter_tts.dart';
 import 'user.dart';
 import 'user_storage.dart';
 
@@ -16,7 +15,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Local Users Demo',
+      title: 'Koptildilik',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
       ),
@@ -104,6 +103,7 @@ class _MainScreenState extends State<MainScreen> {
     const ThirdScreen(),
     const FormScreen(),
     const UserListScreen(),
+    const WordScreen(),
   ];
 
   @override
@@ -133,6 +133,7 @@ class _MainScreenState extends State<MainScreen> {
           BottomNavigationBarItem(icon: Icon(Icons.search), label: 'Мамандық'),
           BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Профиль'),
           BottomNavigationBarItem(icon: Icon(Icons.group), label: 'Пайдаланушылар'),
+          BottomNavigationBarItem(icon: Icon(Icons.school), label: 'Сөздер'),
         ],
       ),
     );
@@ -142,13 +143,16 @@ class _MainScreenState extends State<MainScreen> {
 class SecondScreen extends StatelessWidget {
   const SecondScreen({super.key});
   final List<Map<String, String>> languages = const [
-    {"name": "Ағылшын тілі", "flag": "🇬🇧"},
-    {"name": "Испан тілі", "flag": "🇪🇸"},
-    {"name": "Неміс тілі", "flag": "🇩🇪"},
-    {"name": "Орыс тілі", "flag": "🇷🇺"},
-    {"name": "Француз тілі", "flag": "🇫🇷"},
-    {"name": "Итальян тілі", "flag": "🇮🇹"},
+    {"name": "Ағылшын тілі", "flag": "🇬🇧", "code": "en"},
+    {"name": "Орыс тілі", "flag": "🇷🇺", "code": "ru"},
+    {"name": "Неміс тілі", "flag": "🇩🇪", "code": "de"},
+    {"name": "Испан тілі", "flag": "🇪🇸", "code": "es"},
   ];
+
+  Future<void> _saveSelectedLanguage(String code) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('selected_language', code);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -162,7 +166,12 @@ class SecondScreen extends StatelessWidget {
           mainAxisSpacing: 12,
           children: languages.map((lang) {
             return ElevatedButton(
-              onPressed: () {},
+              onPressed: () {
+                _saveSelectedLanguage(lang["code"]!);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text("${lang["name"]} тілі таңдалды")),
+                );
+              },
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -190,29 +199,30 @@ class ThirdScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text("Мамандық таңдау")),
-      body: SingleChildScrollView(
-        child: Column(
-          children: [
-            const SizedBox(height: 16),
-            const Text("Қызығушылығыңызға сай мамандықты таңдаңыз:",
-                style: TextStyle(fontSize: 18), textAlign: TextAlign.center),
-            const SizedBox(height: 16),
-            ListView.builder(
-              shrinkWrap: true,
-              itemCount: professions.length,
-              itemBuilder: (context, index) {
-                return Card(
-                  margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  child: ListTile(
-                    title: Text(professions[index]),
-                    trailing: const Icon(Icons.arrow_forward_ios),
-                    onTap: () {},
-                  ),
-                );
-              },
+      body: ListView.builder(
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        itemCount: professions.length + 1,
+        itemBuilder: (context, index) {
+          if (index == 0) {
+            return const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16),
+              child: Text(
+                "Қызығушылығыңызға сай мамандықты таңдаңыз:",
+                style: TextStyle(fontSize: 18),
+                textAlign: TextAlign.center,
+              ),
+            );
+          }
+          final profession = professions[index - 1];
+          return Card(
+            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: ListTile(
+              title: Text(profession),
+              trailing: const Icon(Icons.arrow_forward_ios),
+              onTap: () {},
             ),
-          ],
-        ),
+          );
+        },
       ),
     );
   }
@@ -307,6 +317,123 @@ class UserListScreen extends StatelessWidget {
             ),
           );
         },
+      ),
+    );
+  }
+}
+
+class WordScreen extends StatefulWidget {
+  const WordScreen({super.key});
+  @override
+  State<WordScreen> createState() => _WordScreenState();
+}
+
+class _WordScreenState extends State<WordScreen> {
+  final FlutterTts flutterTts = FlutterTts();
+  String selectedLanguage = "en";
+  String word = "";
+  List<String> options = [];
+  String correctAnswer = "";
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLanguageAndWord();
+  }
+
+  Future<void> _loadLanguageAndWord() async {
+    final prefs = await SharedPreferences.getInstance();
+    final langCode = prefs.getString('selected_language') ?? 'en';
+    setState(() {
+      selectedLanguage = langCode;
+    });
+
+    if (langCode == "en") {
+      word = "Apple";
+      options = ["Алма", "Банан", "Апельсин", "алмұрт"];
+      correctAnswer = "Алма";
+    } else if (langCode == "ru") {
+      word = "Яблоко";
+      options = ["Алма", "Банан", "Апельсин", "алмұрт"];
+      correctAnswer = "Алма";
+    } else if (langCode == "de") {
+      word = "Apfel";
+      options = ["Алма", "Банан", "Апельсин", "алмұрт"];
+      correctAnswer = "Алма";
+    } else if (langCode == "es") {
+      word = "Manzana";
+      options = ["Алма", "Банан", "Апельсин", "алмұрт"];
+      correctAnswer = "Алма";
+    }
+    setState(() {});
+  }
+
+  Future<void> _speak() async {
+    await flutterTts.setLanguage(selectedLanguage == "en" ? "en-US" : "ru-RU");
+    await flutterTts.setSpeechRate(0.5);
+    await flutterTts.speak(word);
+  }
+
+  void _checkAnswer(String answer) {
+    final isCorrect = answer == correctAnswer;
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text(isCorrect ? "Дұрыс!" : "Қате"),
+        content: Text(isCorrect
+            ? "Жарайсың! Бұл дұрыс жауап."
+            : "Дұрыс жауап: $correctAnswer"),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text("OK"),
+          )
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text("Сөзді таңда")),
+      body: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          children: [
+            const Spacer(flex: 2),
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.teal, width: 2),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                word,
+                style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+              ),
+            ),
+            const SizedBox(height: 16),
+            IconButton(
+              onPressed: _speak,
+              icon: const Icon(Icons.volume_up, size: 32, color: Colors.teal),
+            ),
+            const Spacer(),
+            ...options.map((option) => Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6.0),
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  backgroundColor: Colors.teal,
+                  minimumSize: const Size.fromHeight(50),
+                ),
+                onPressed: () => _checkAnswer(option),
+                child: Text(option, style: const TextStyle(fontSize: 18)),
+              ),
+            )),
+            const Spacer(flex: 2),
+          ],
+        ),
       ),
     );
   }
