@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "124150950446",
+    "project_id": "koptildilik-flutter",
+    "storage_bucket": "koptildilik-flutter.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:124150950446:android:b171f3a6036c949e76cdbf",
+        "android_client_info": {
+          "package_name": "com.example.koptildilik"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDymf6lmgOEl5U85KQtObBi0acU0tAceXM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

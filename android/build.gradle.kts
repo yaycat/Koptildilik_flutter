@@ -1,3 +1,14 @@
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath("com.android.tools.build:gradle:7.2.0") // версия плагина для Android
+        classpath("com.google.gms:google-services:4.4.0") // добавляем плагин для Firebase
+    }
+}
+
 allprojects {
     repositories {
         google()
