@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:math';
+
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -5,6 +8,14 @@ import 'package:flutter_tts/flutter_tts.dart';
 import 'user.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'user_storage.dart';
+import 'package:firebase_database/firebase_database.dart';
+import 'package:flutter/material.dart';
+import 'package:firebase_database/firebase_database.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_tts/flutter_tts.dart';
+import 'dart:convert'; // для utf8 и base64
+import 'package:crypto/crypto.dart'; // для sha256
+
 
 
 
@@ -54,6 +65,10 @@ class _MyAppState extends State<MyApp> {
         '/word': (context) => const WordScreen(),
         '/form': (context) => const FormScreen(),
         '/about': (context) => const AboutContent(),
+        '/auth': (context) => const AuthScreen(),
+        '/profile': (context) => const ProfileScreen(),
+        '/login': (context) => const LoginScreen(),
+        '/register': (context) => const FormScreen(),
       },
       debugShowCheckedModeBanner: false,
     );
@@ -136,10 +151,11 @@ class _FirstScreenState extends State<FirstScreen> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             const Spacer(flex: 3),
-            const Text("Koptildilik", style: TextStyle(fontSize: 28, color: Colors.green)),
+            const Text("Koptildilik",
+                style: TextStyle(fontSize: 28, color: Colors.green)),
             const SizedBox(height: 10),
-            Text( "Қош келдіңіз!" ,style: const TextStyle(fontSize: 20, color: Colors.blue),
-            ),
+            const Text("Қош келдіңіз!",
+                style: TextStyle(fontSize: 20, color: Colors.blue)),
             const Spacer(flex: 5),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16.0),
@@ -148,11 +164,11 @@ class _FirstScreenState extends State<FirstScreen> {
                   backgroundColor: Colors.teal,
                   minimumSize: const Size(double.infinity, 50),
                 ),
-                onPressed: () => Navigator.pushReplacementNamed(context, '/main'),
-                child: const Text("Бастау",
-                    style: TextStyle(color: Colors.white)),
+                onPressed: () =>
+                    Navigator.pushReplacementNamed(context, '/auth'),
+                child: const Text("Бастау", style: TextStyle(color: Colors.white)),
               ),
-              ),
+            ),
             const Spacer(flex: 3),
           ],
         ),
@@ -161,6 +177,179 @@ class _FirstScreenState extends State<FirstScreen> {
   }
 }
 
+//AUTH SCREEN------------------------------------------------------------------------------------------------------------
+
+class AuthScreen extends StatelessWidget {
+  const AuthScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text("Кіру")),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Text(
+              "Қалай жалғастырғыңыз келеді?",
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 40),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                minimumSize: const Size(double.infinity, 50),
+              ),
+              onPressed: () => Navigator.pushNamed(context, '/form'),
+              child: const Text("Тіркелу"),
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                minimumSize: const Size(double.infinity, 50),
+              ),
+              onPressed: () => Navigator.pushNamed(context, '/login'),
+              child: const Text("Кіру"),
+            ),
+            const SizedBox(height: 16),
+            OutlinedButton(
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size(double.infinity, 50),
+                side: const BorderSide(color: Colors.teal),
+              ),
+              onPressed: () => Navigator.pushNamed(context, '/main'),
+              child: const Text("Гость ретінде кіру",
+                  style: TextStyle(color: Colors.teal)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+
+
+
+//LOGIN SCREEN---------------------------------------------------------------------------------------------
+
+class LoginScreen extends StatefulWidget {
+  const LoginScreen({super.key});
+
+  @override
+  State<LoginScreen> createState() => _LoginScreenState();
+}
+
+class _LoginScreenState extends State<LoginScreen> {
+  final _emailController = TextEditingController();
+  final _loginController = TextEditingController();
+  final _passwordController = TextEditingController();
+  final _formKey = GlobalKey<FormState>();
+  String errorMessage = '';
+  bool _loading = false;
+
+  String hashPassword(String password, String salt) {
+    final bytes = utf8.encode(password + salt);
+    final digest = sha256.convert(bytes);
+    return base64Encode(digest.bytes);
+  }
+
+  Future<void> _loginUser() async {
+    setState(() {
+      errorMessage = '';
+      _loading = true;
+    });
+
+    final login = _loginController.text.trim();
+    final password = _passwordController.text.trim();
+
+
+    final dbRef = FirebaseDatabase.instance.ref();
+    final snapshot = await dbRef.child('Accounts/$login').get();
+
+    if (!snapshot.exists) {
+      setState(() {
+        errorMessage = "Пайдаланушы табылмады.";
+        _loading = false;
+      });
+      return;
+    }
+
+    final user = snapshot.value as Map;
+    final salt = user['salt'];
+    final storedHash = user['passwordHash'];
+
+    if (salt == null || storedHash == null) {
+      setState(() {
+        errorMessage = "⚠️ Қолданушыда пароль немесе тұз (salt) табылмады.";
+        _loading = false;
+      });
+      return;
+    }
+    final enteredHash = hashPassword(password, salt);
+
+    if (enteredHash == storedHash) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('login', login);
+      await prefs.setString('selected_language', user['language']);
+      await prefs.setString('selected_topic', user['topic']);
+      await prefs.setInt('user_level', user['level'] ?? 1);
+
+      if (mounted) {
+        Navigator.pushReplacementNamed(context, '/main');
+      }
+    } else {
+      setState(() {
+        errorMessage = "Құпия сөз дұрыс емес.";
+        _loading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text("Кіру")),
+      body: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            children: [
+              TextFormField(
+                controller: _loginController,
+                decoration: const InputDecoration(labelText: "Логин"),
+                validator: (val) => val == null || val.isEmpty ? "Логин енгізіңіз" : null,
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _passwordController,
+                decoration: const InputDecoration(labelText: "Құпия сөз"),
+                obscureText: true,
+                validator: (val) => val == null || val.isEmpty ? "Құпия сөз енгізіңіз" : null,
+              ),
+              const SizedBox(height: 20),
+              if (errorMessage.isNotEmpty)
+                Text(errorMessage, style: const TextStyle(color: Colors.red)),
+              const SizedBox(height: 10),
+              _loading
+                  ? const CircularProgressIndicator()
+                  : ElevatedButton(
+                onPressed: () {
+                  if (_formKey.currentState!.validate()) {
+                    _loginUser();
+                  }
+                },
+                child: const Text("Кіру"),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 
 
@@ -194,7 +383,7 @@ class _MainScreenState extends State<MainScreen> {
       const SecondScreen(),
       const ThirdScreen(),
       const WordScreen(),
-      const FormScreen(),
+      const ProfileScreen(),
       _SettingsContent(
         changeLocale: widget.changeLocale,
         changeTheme: widget.changeTheme,
@@ -245,9 +434,15 @@ class SecondScreen extends StatelessWidget {
     {"name": "Испан тілі", "flag": "🇪🇸", "code": "es"},
   ];
 
-  Future<void> _saveSelectedLanguage(String code) async {
+  Future<void> _saveSelectedLanguage(String nameWithFlag, String code) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('selected_language', code);
+    final login = prefs.getString('login');
+
+    if (login != null) {
+      final dbRef = FirebaseDatabase.instance.ref();
+      await dbRef.child('Accounts/$login/language').set(nameWithFlag);
+    }
   }
 
   @override
@@ -261,11 +456,12 @@ class SecondScreen extends StatelessWidget {
           crossAxisSpacing: 12,
           mainAxisSpacing: 12,
           children: languages.map((lang) {
+            final displayName = "${lang["flag"]!} ${lang["name"]!}";
             return ElevatedButton(
-              onPressed: () {
-                _saveSelectedLanguage(lang["code"]!);
+              onPressed: () async {
+                await _saveSelectedLanguage(displayName, lang["code"]!);
                 ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text("${lang["name"]} тілі таңдалды")),
+                  SnackBar(content: Text("${lang["name"]} таңдалды")),
                 );
               },
               child: Column(
@@ -290,39 +486,51 @@ class SecondScreen extends StatelessWidget {
 //TOPIC CHOOSE ------------------------------------------------------------------------------
 class ThirdScreen extends StatelessWidget {
   const ThirdScreen({super.key});
-  final List<String> professions = const [
-    "Программист", "Дизайнер", "Мұғалім", "Дәрігер", "Инженер", "Аудармашы",
-    "Журналист", "Маркетолог", "Фотограф", "Құрылысшы", "Техник", "Космонавт"
-  ];
+  final Map<String, String> topics = const {
+    "career": "👨‍💻 Мансап",
+    "communication": "🤝 Адамдармен сөйлесу",
+    "education": "📚 Білімі",
+    "general": "📖 Жалпы",
+    "self": "🧍 Өзі",
+    "travel": "🌍 Саяхат",
+  };
+
+  Future<void> _saveTopic(String topic) async {
+    final prefs = await SharedPreferences.getInstance();
+    final login = prefs.getString('login');
+
+    await prefs.setString('selected_topic', topic);
+    await prefs.setInt('user_level', 1); // начальный уровень
+
+    if (login != null) {
+      final dbRef = FirebaseDatabase.instance.ref();
+      await dbRef.child('Accounts/$login/topic').set(topic);
+      await dbRef.child('Accounts/$login/level').set(1);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Мамандық таңдау")),
-      body: ListView.builder(
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        itemCount: professions.length + 1,
-        itemBuilder: (context, index) {
-          if (index == 0) {
-            return const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16),
-              child: Text(
-                "Қызығушылығыңызға сай мамандықты таңдаңыз:",
-                style: TextStyle(fontSize: 18),
-                textAlign: TextAlign.center,
-              ),
-            );
-          }
-          final profession = professions[index - 1];
+      appBar: AppBar(title: const Text("Тақырыпты таңдау")),
+      body: ListView(
+        children: topics.entries.map((entry) {
+          final key = entry.key;
+          final display = entry.value;
           return Card(
             margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: ListTile(
-              title: Text(profession),
+              title: Text(display),
               trailing: const Icon(Icons.arrow_forward_ios),
-              onTap: () {},
+              onTap: () async {
+                await _saveTopic(key);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text("Тақырып таңдалды: $display")),
+                );
+              },
             ),
           );
-        },
+        }).toList(),
       ),
     );
   }
@@ -333,71 +541,153 @@ class ThirdScreen extends StatelessWidget {
 
 
 // WORD SCREEN PAGE --------------------------------------------------------------------
+
 class WordScreen extends StatefulWidget {
   const WordScreen({super.key});
+
   @override
   State<WordScreen> createState() => _WordScreenState();
 }
 
 class _WordScreenState extends State<WordScreen> {
   final FlutterTts flutterTts = FlutterTts();
-  String selectedLanguage = "en";
-  String word = "";
+  String selectedLanguage = 'en';
+  List<Map<String, dynamic>> wordList = [];
+  int currentWordIndex = 0;
+  String currentWord = '';
+  String correctAnswer = '';
   List<String> options = [];
-  String correctAnswer = "";
 
   @override
   void initState() {
     super.initState();
-    _loadLanguageAndWord();
+    _loadWordsFromFirebase();
   }
 
-  Future<void> _loadLanguageAndWord() async {
+  Future<void> _loadWordsFromFirebase() async {
     final prefs = await SharedPreferences.getInstance();
-    final langCode = prefs.getString('selected_language') ?? 'kk';
-    setState(() {
-      selectedLanguage = langCode;
-    });
+    selectedLanguage = prefs.getString('selected_language') ?? 'en';
+    final selectedTopic = prefs.getString('selected_topic') ?? 'career';
+    final userLevel = prefs.getInt('user_level') ?? 1;
 
-    if (langCode == "en") {
-      word = "Apple";
-      options = ["Алма", "Банан", "Апельсин", "алмұрт"];
-      correctAnswer = "Алма";
-    } else if (langCode == "ru") {
-      word = "Яблоко";
-      options = ["Алма", "Банан", "Апельсин", "алмұрт"];
-      correctAnswer = "Алма";
-    } else if (langCode == "de") {
-      word = "Apfel";
-      options = ["Алма", "Банан", "Апельсин", "алмұрт"];
-      correctAnswer = "Алма";
-    } else if (langCode == "es") {
-      word = "Manzana";
-      options = ["Алма", "Банан", "Апельсин", "алмұрт"];
-      correctAnswer = "Алма";
+    final dbRef = FirebaseDatabase.instance.ref();
+    final path = 'languages/kazakh/topics/$selectedTopic/level$userLevel';
+    final snapshot = await dbRef.child(path).get();
+
+    if (snapshot.exists) {
+      final data = Map<String, dynamic>.from(snapshot.value as Map);
+
+      final langFieldMap = {
+        'en': 'english',
+        'de': 'german',
+        'ru': 'russian',
+        'es': 'spanish',
+        'kk': 'kazakh',
+      };
+      final translationKey = langFieldMap[selectedLanguage] ?? 'english';
+
+      wordList = data.entries.map((e) {
+        final translations = Map<String, dynamic>.from(e.value);
+        return {
+          'foreign': translations[translationKey] ?? '',
+          'kazakh': translations['kazakh'] ?? '',
+        };
+      }).toList();
+
+      _loadCurrentWord();
     }
-    setState(() {});
+  }
+
+  void _loadCurrentWord() {
+    if (currentWordIndex < wordList.length) {
+      final wordData = wordList[currentWordIndex];
+      setState(() {
+        currentWord = wordData['foreign'];
+        correctAnswer = wordData['kazakh'];
+        options = _generateOptions(correctAnswer);
+      });
+    } else {
+      _showLevelCompleteDialog();
+    }
+  }
+
+  List<String> _generateOptions(String correct) {
+    final fakeAnswers = ['жауап 1', 'жауап 2', 'жауап 3', correct];
+    fakeAnswers.shuffle();
+    return fakeAnswers;
   }
 
   Future<void> _speak() async {
-    await flutterTts.setLanguage(selectedLanguage == "en" ? "en-US" : "ru-RU");
+    final ttsLanguageMap = {
+      'en': 'en-US',
+      'de': 'de-DE',
+      'ru': 'ru-RU',
+      'es': 'es-ES',
+      'kk': 'kk-KZ',
+    };
+
+    final ttsLang = ttsLanguageMap[selectedLanguage] ?? 'en-US';
+    await flutterTts.setLanguage(ttsLang);
     await flutterTts.setSpeechRate(0.5);
-    await flutterTts.speak(word);
+    await flutterTts.speak(currentWord);
   }
 
   void _checkAnswer(String answer) {
     final isCorrect = answer == correctAnswer;
+
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
         title: Text(isCorrect ? "Дұрыс!" : "Қате"),
         content: Text(isCorrect
             ? "Жарайсың! Бұл дұрыс жауап."
-            : "Дұрыс жауап: $correctAnswer"),
+            : "Дұрыс жауап"),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(context).pop(),
+            onPressed: () {
+              Navigator.of(context).pop();
+              if (isCorrect) {
+                setState(() {
+                  currentWordIndex++;
+                });
+                _loadCurrentWord();
+              }
+            },
             child: const Text("OK"),
+          )
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showLevelCompleteDialog() async {
+    final prefs = await SharedPreferences.getInstance();
+    final login = prefs.getString('login') ?? 'guest';
+    int currentLevel = prefs.getInt('user_level') ?? 1;
+    final nextLevel = currentLevel + 1;
+
+    // Сохраняем новый уровень
+    await prefs.setInt('user_level', nextLevel);
+
+    final dbRef = FirebaseDatabase.instance.ref();
+    await dbRef.child('users/$login/level').set(nextLevel);
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        title: const Text("🎉 Құттықтаймыз!"),
+        content: Text("Сіз $currentLevel-деңгейін аяқтадыңыз! Келесі деңгейге өтіңіз."),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              setState(() {
+                currentWordIndex = 0;
+              });
+              _loadWordsFromFirebase();
+            },
+            child: const Text("Келесі деңгей"),
           )
         ],
       ),
@@ -408,7 +698,9 @@ class _WordScreenState extends State<WordScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text("Сөзді таңда")),
-      body: Padding(
+      body: currentWord.isEmpty
+          ? const Center(child: CircularProgressIndicator())
+          : Padding(
         padding: const EdgeInsets.all(24.0),
         child: Column(
           children: [
@@ -420,7 +712,7 @@ class _WordScreenState extends State<WordScreen> {
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Text(
-                word,
+                currentWord,
                 style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
               ),
             ),
@@ -452,9 +744,11 @@ class _WordScreenState extends State<WordScreen> {
 
 
 
+
 //LOGIN AND REGISTER PAGE---------------------------------------------------------------------------
 class FormScreen extends StatefulWidget {
   const FormScreen({super.key});
+
   @override
   State<FormScreen> createState() => _FormScreenState();
 }
@@ -465,27 +759,155 @@ class _FormScreenState extends State<FormScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
 
-  Future<void> _saveData() async {
+  bool _loading = false;
+  String _errorMessage = '';
+
+  String generateSalt() {
+    final rand = Random.secure();
+    final saltBytes = List<int>.generate(16, (_) => rand.nextInt(256));
+    return base64Encode(saltBytes);
+  }
+
+  String hashPassword(String password, String salt) {
+    final bytes = utf8.encode(password + salt);
+    final digest = sha256.convert(bytes);
+    return base64Encode(digest.bytes);
+  }
+
+  Future<void> _registerUser() async {
+    setState(() {
+      _loading = true;
+      _errorMessage = '';
+    });
+
+    final login = _loginController.text.trim();
+    final email = _emailController.text.trim();
+    final password = _passwordController.text.trim();
+    final dbRef = FirebaseDatabase.instance.ref().child('Accounts');
+
+    final snapshot = await dbRef.child(login).get();
+    if (snapshot.exists) {
+      setState(() {
+        _loading = false;
+        _errorMessage = "Бұл логинмен қолданушы бар.";
+      });
+      return;
+    }
+
+    final salt = generateSalt();
+    final passwordHash = hashPassword(password, salt);
+
+    final defaultLang = "Қазақ тілі";
+    final defaultTopic = "Мансап";
+    final defaultLevel = 1;
+
+    await dbRef.child(login).set({
+      "login": login,
+      "email": email,
+      "passwordHash": passwordHash,
+      "salt": salt,
+      "language": defaultLang,
+      "topic": defaultTopic,
+      "level": defaultLevel,
+    });
+
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('login', _loginController.text);
-    await prefs.setString('email', _emailController.text);
-    await prefs.setString('password', _passwordController.text);
+    await prefs.setString('login', login);
+    await prefs.setString('selected_language', defaultLang);
+    await prefs.setString('selected_topic', defaultTopic);
+    await prefs.setInt('user_level', defaultLevel);
 
-    final newUser = User(
-      id: await UserStorage.getNextUserId(),
-      name: _loginController.text,
-      email: _emailController.text,
-    );
-    await UserStorage.addUser(newUser);
+    if (mounted) {
+      Navigator.pushReplacementNamed(context, '/main');
+    }
+  }
 
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text("Сақтау сәтті өтті"),
-        content: const Text("Деректер сәтті сақталды."),
-        actions: [TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text("OK"))],
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text("Тіркелу")),
+      body: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            children: [
+              TextFormField(
+                controller: _loginController,
+                decoration: const InputDecoration(labelText: 'Логин'),
+                validator: (val) => val == null || val.isEmpty ? "Логин енгізіңіз" : null,
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _emailController,
+                decoration: const InputDecoration(labelText: 'Email'),
+                validator: (val) => val == null || val.isEmpty ? "Email енгізіңіз" : null,
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _passwordController,
+                obscureText: true,
+                decoration: const InputDecoration(labelText: 'Құпия сөз'),
+                validator: (val) => val == null || val.length < 6
+                    ? "Кемінде 6 символ енгізіңіз"
+                    : null,
+              ),
+              const SizedBox(height: 20),
+              if (_errorMessage.isNotEmpty)
+                Text(_errorMessage, style: const TextStyle(color: Colors.red)),
+              if (_loading)
+                const CircularProgressIndicator()
+              else
+                ElevatedButton(
+                  onPressed: () {
+                    if (_formKey.currentState!.validate()) {
+                      _registerUser();
+                    }
+                  },
+                  child: const Text("Тіркелу"),
+                ),
+            ],
+          ),
+        ),
       ),
     );
+  }
+}
+
+
+
+
+
+//PROFILE SCREEN--------------------------------------------------------------------------------------------------------------
+
+
+class ProfileScreen extends StatefulWidget {
+  const ProfileScreen({super.key});
+
+  @override
+  State<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends State<ProfileScreen> {
+  String login = '';
+  String language = '';
+  String topic = '';
+  int level = 1;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserData();
+  }
+
+  Future<void> _loadUserData() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      login = prefs.getString('login') ?? 'Қонақ';
+      language = prefs.getString('selected_language') ?? 'Қазақ тілі';
+      topic = prefs.getString('selected_topic') ?? 'Байланыс';
+      level = prefs.getInt('user_level') ?? 1;
+    });
   }
 
   @override
@@ -493,27 +915,26 @@ class _FormScreenState extends State<FormScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text("Профиль")),
       body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            children: [
-              TextFormField(controller: _loginController, decoration: const InputDecoration(labelText: 'Логин'),
-                  validator: (value) => value == null || value.isEmpty ? 'Логинді енгізіңіз' : null),
-              TextFormField(controller: _emailController, decoration: const InputDecoration(labelText: 'Электрондық пошта'),
-                  validator: (value) => value == null || value.isEmpty ? 'Email енгізіңіз' : null),
-              TextFormField(controller: _passwordController, decoration: const InputDecoration(labelText: 'Құпия сөз'),
-                  obscureText: true,
-                  validator: (value) => value == null || value.isEmpty ? 'Құпия сөзді енгізіңіз' : null),
-              const SizedBox(height: 20),
-              ElevatedButton(
-                onPressed: () {
-                  if (_formKey.currentState!.validate()) _saveData();
-                },
-                child: const Text('Сақтау'),
-              ),
-            ],
-          ),
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.person),
+              title: Text("Логин: $login"),
+            ),
+            ListTile(
+              leading: const Icon(Icons.language),
+              title: Text("Тіл: $language"),
+            ),
+            ListTile(
+              leading: const Icon(Icons.topic),
+              title: Text("Тақырып: $topic"),
+            ),
+            ListTile(
+              leading: const Icon(Icons.star),
+              title: Text("Деңгей: $level"),
+            ),
+          ],
         ),
       ),
     );

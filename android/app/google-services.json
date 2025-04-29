@@ -1,6 +1,7 @@
 {
   "project_info": {
     "project_number": "124150950446",
+    "firebase_url": "https://koptildilik-flutter-default-rtdb.europe-west1.firebasedatabase.app",
     "project_id": "koptildilik-flutter",
     "storage_bucket": "koptildilik-flutter.firebasestorage.app"
   },
