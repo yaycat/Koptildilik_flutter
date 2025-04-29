@@ -641,7 +641,7 @@ class _WordScreenState extends State<WordScreen> {
         title: Text(isCorrect ? "Дұрыс!" : "Қате"),
         content: Text(isCorrect
             ? "Жарайсың! Бұл дұрыс жауап."
-            : "Дұрыс жауап"),
+            : "Дұрыс емес"),
         actions: [
           TextButton(
             onPressed: () {
