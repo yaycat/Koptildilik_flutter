@@ -62,12 +62,16 @@ class _MyAppState extends State<MyApp> {
         '/second': (context) => const SecondScreen(),
         '/third': (context) => const ThirdScreen(),
         '/word': (context) => const WordScreen(),
-        '/form': (context) => const FormScreen(),
         '/about': (context) => const AboutContent(),
         '/auth': (context) => const AuthScreen(),
         '/profile': (context) => const ProfileScreen(),
         '/login': (context) => const LoginScreen(),
         '/register': (context) => const FormScreen(),
+        '/choose': (context) => ChooseScreen(
+          currentIndex: 0,
+          changeTheme: _changeTheme,
+          changeLocale: _changeLocale,
+        ),
       },
       debugShowCheckedModeBanner: false,
     );
@@ -200,7 +204,7 @@ class AuthScreen extends StatelessWidget {
               style: ElevatedButton.styleFrom(
                 minimumSize: const Size(double.infinity, 50),
               ),
-              onPressed: () => Navigator.pushNamed(context, '/form'),
+              onPressed: () => Navigator.pushNamed(context, '/register'),
               child: const Text("Тіркелу"),
             ),
             const SizedBox(height: 16),
@@ -219,7 +223,7 @@ class AuthScreen extends StatelessWidget {
               ),
               onPressed: () {
                 isGuest = true;
-                Navigator.pushNamed(context, '/main');
+                Navigator.pushNamed(context, '/choose');
               },
               child: const Text("Гость ретінде кіру",
                   style: TextStyle(color: Colors.teal)),
@@ -299,7 +303,7 @@ class _LoginScreenState extends State<LoginScreen> {
       await prefs.setInt('user_level', user['level'] ?? 1);
 
       if (mounted) {
-        Navigator.pushReplacementNamed(context, '/main');
+        Navigator.pushReplacementNamed(context, '/choose');
       }
     } else {
       setState(() {
@@ -354,6 +358,64 @@ class _LoginScreenState extends State<LoginScreen> {
 }
 
 
+//ALL CHOOSE SCREEN --------------------------------------------------------------------------
+class ChooseScreen extends StatefulWidget {
+  final int currentIndex;
+  final Function(ThemeMode) changeTheme;
+  final Function(Locale) changeLocale;
+
+  const ChooseScreen({
+    super.key,
+    required this.currentIndex,
+    required this.changeTheme,
+    required this.changeLocale,
+  });
+
+  @override
+  State<ChooseScreen> createState() => _ChooseScreenState();
+}
+
+class _ChooseScreenState extends State<ChooseScreen> {
+  late int _selectedIndex;
+  final List<Widget> _screens = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedIndex = widget.currentIndex;
+    _screens.addAll([
+      const SecondScreen(),
+      const ThirdScreen(),
+    ]);
+  }
+
+  void _onItemTapped(int index) {
+    setState(() {
+      _selectedIndex = index;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: OrientationBuilder(
+        builder: (context, orientation) => _screens[_selectedIndex],
+      ),
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _selectedIndex,
+        onTap: _onItemTapped,
+        type: BottomNavigationBarType.fixed,
+        selectedItemColor: Colors.teal,
+        unselectedItemColor: Colors.grey,
+        items: const [
+          BottomNavigationBarItem(icon: Icon(Icons.language), label: 'Тілдер'),
+          BottomNavigationBarItem(icon: Icon(Icons.search), label: 'Мамандық'),
+        ],
+      ),
+    );
+  }
+}
+
 
 
 //MAIN SCREEN --------------------------------------------------------------------------
@@ -372,7 +434,6 @@ class MainScreen extends StatefulWidget {
   @override
   State<MainScreen> createState() => _MainScreenState();
 }
-
 class _MainScreenState extends State<MainScreen> {
   late int _selectedIndex;
   final List<Widget> _screens = [];
@@ -382,8 +443,6 @@ class _MainScreenState extends State<MainScreen> {
     super.initState();
     _selectedIndex = widget.currentIndex;
     _screens.addAll([
-      const SecondScreen(),
-      const ThirdScreen(),
       const WordScreen(),
       const ProfileScreen(),
       _SettingsContent(
@@ -410,8 +469,6 @@ class _MainScreenState extends State<MainScreen> {
         selectedItemColor: Colors.teal,
         unselectedItemColor: Colors.grey,
         items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.language), label: 'Тілдер'),
-          BottomNavigationBarItem(icon: Icon(Icons.search), label: 'Мамандық'),
           BottomNavigationBarItem(icon: Icon(Icons.school), label: 'Сөздер'),
           BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Профиль'),
           BottomNavigationBarItem(icon: Icon(Icons.settings), label: 'Баптау'),
@@ -529,6 +586,7 @@ class ThirdScreen extends StatelessWidget {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(content: Text("Тақырып таңдалды: $display")),
                 );
+                Navigator.pushNamed(context, '/main');
               },
             ),
           );
@@ -820,7 +878,7 @@ class _FormScreenState extends State<FormScreen> {
     await prefs.setInt('user_level', defaultLevel);
 
     if (mounted) {
-      Navigator.pushReplacementNamed(context, '/main');
+      Navigator.pushReplacementNamed(context, '/choose');
     }
   }
 
