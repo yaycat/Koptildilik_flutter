@@ -303,7 +303,7 @@ class _LoginScreenState extends State<LoginScreen> {
       await prefs.setInt('user_level', user['level'] ?? 1);
 
       if (mounted) {
-        Navigator.pushReplacementNamed(context, '/choose');
+        Navigator.pushReplacementNamed(context, '/main');
       }
     } else {
       setState(() {
@@ -1031,22 +1031,12 @@ class SettingsScreen extends StatelessWidget {
     return DefaultTabController(
       length: 2,
       child: Scaffold(
-        appBar: AppBar(
-          title: const Text('Баптаулар'),
-          bottom: const TabBar(
-            tabs: [
-              Tab(icon: Icon(Icons.settings), text: 'Баптаулар'),
-              Tab(icon: Icon(Icons.info), text: 'Қолданба туралы'),
-            ],
-          ),
-        ),
         body: TabBarView(
           children: [
             _SettingsContent(
               changeTheme: changeTheme,
               changeLocale: changeLocale,
             ),
-            const AboutContent(),
           ],
         ),
       ),
@@ -1118,6 +1108,14 @@ class __SettingsContentState extends State<_SettingsContent> {
     }
   }
 
+  Future<void> _choose() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.clear();
+    if (mounted) {
+      Navigator.pushReplacementNamed(context, '/choose');
+    }
+  }
+
 
   void _showPrivacyPolicy() {
     showDialog(
@@ -1149,99 +1147,101 @@ class __SettingsContentState extends State<_SettingsContent> {
         ),
       );
     }
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
 
-          const Text("\n"),
-          const Text("🎨 Тема режимі", style: TextStyle(fontWeight: FontWeight.bold)),
-          const SizedBox(height: 8),
-          DropdownButtonFormField<ThemeMode>(
-            value: _themeMode,
-            decoration: const InputDecoration(border: OutlineInputBorder()),
-            items: const [
-              DropdownMenuItem(value: ThemeMode.light, child: Text("Ақшыл")),
-              DropdownMenuItem(value: ThemeMode.dark, child: Text("Қараңғы")),
+    return Scaffold(
+        appBar: AppBar(title: const Text("Баптау")), // Добавленный AppBar
+        body: SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text("\n"),
+              const Text("🎨 Тема режимі", style: TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              DropdownButtonFormField<ThemeMode>(
+                value: _themeMode,
+                decoration: const InputDecoration(border: OutlineInputBorder()),
+                items: const [
+                  DropdownMenuItem(value: ThemeMode.light, child: Text("Ақшыл")),
+                  DropdownMenuItem(value: ThemeMode.dark, child: Text("Қараңғы")),
+                ],
+                onChanged: (mode) {
+                  if (mode != null) _changeThemeMode(mode);
+                  },
+              ),
+              const SizedBox(height: 20),
+              const Text("🌐 Интерфейс тілі", style: TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              DropdownButtonFormField<String>(
+                value: _selectedLang,
+                items: const [
+                  DropdownMenuItem(value: 'kk', child: Text('Қазақша')),
+                  DropdownMenuItem(value: 'en', child: Text('English')),
+                  DropdownMenuItem(value: 'ru', child: Text('Русский')),
+                ],
+                onChanged: (val) {
+                  if (val != null) {
+                    setState(() => _selectedLang = val);
+                    widget.changeLocale(Locale(val));
+                  }
+                  },
+                decoration: const InputDecoration(
+                  labelText: 'Тілді таңдаңыз',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 20),
+              const Text("🧠 Оқу режимі", style: TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              DropdownButtonFormField<String>(
+      value: _learningMode,
+      items: const [
+      DropdownMenuItem(value: 'cards', child: Text('Карточкалар')),
+      DropdownMenuItem(value: 'quiz', child: Text('Викторина')),
+    ],
+      onChanged: (val) async {
+      if (val != null) {
+      setState(() => _learningMode = val);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('learning_mode', val);
+    }},
+      decoration: const InputDecoration(
+      labelText: 'Режимді таңдаңыз',
+      border: OutlineInputBorder(),
+    ),
+    ),
+              const SizedBox(height: 30),
+              ElevatedButton.icon(
+                onPressed: _resetProgress,
+                icon: const Icon(Icons.refresh),
+                label: const Text("Прогресті жаңарту"),
+              ),
+              const SizedBox(height: 10),
+              ElevatedButton.icon(
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const AboutContent()),
+                ),
+                icon: const Icon(Icons.privacy_tip),
+                label: const Text("Құпиялық саясаты"),
+              ),
+              const SizedBox(height: 10),
+              ElevatedButton.icon(
+                onPressed: _choose,
+                icon: const Icon(Icons.abc),
+                label: const Text("Тіл мен тақырыпты таңдаңыз"),
+              ),
+              const SizedBox(height: 10),
+              ElevatedButton.icon(
+                onPressed: _logout,
+                icon: const Icon(Icons.logout),
+                label: const Text("Шығу"),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+              ),
+              const SizedBox(height: 30),
             ],
-            onChanged: (mode) {
-              if (mode != null) _changeThemeMode(mode);
-            },
           ),
-          const SizedBox(height: 20),
-
-          const Text("🌐 Интерфейс тілі", style: TextStyle(fontWeight: FontWeight.bold)),
-          const SizedBox(height: 8),
-          DropdownButtonFormField<String>(
-            value: _selectedLang,
-            items: const [
-              DropdownMenuItem(value: 'kk', child: Text('Қазақша')),
-              DropdownMenuItem(value: 'en', child: Text('English')),
-              DropdownMenuItem(value: 'ru', child: Text('Русский')),
-            ],
-            onChanged: (val) {
-              if (val != null) {
-                setState(() => _selectedLang = val);
-                widget.changeLocale(Locale(val));
-              }
-            },
-            decoration: const InputDecoration(
-              labelText: 'Тілді таңдаңыз',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: 20),
-
-          const Text("🧠 Оқу режимі", style: TextStyle(fontWeight: FontWeight.bold)),
-          const SizedBox(height: 8),
-          DropdownButtonFormField<String>(
-            value: _learningMode,
-            items: const [
-              DropdownMenuItem(value: 'cards', child: Text('Карточкалар')),
-              DropdownMenuItem(value: 'quiz', child: Text('Викторина')),
-            ],
-            onChanged: (val) async {
-              if (val != null) {
-                setState(() => _learningMode = val);
-                final prefs = await SharedPreferences.getInstance();
-                await prefs.setString('learning_mode', val);
-              }
-            },
-            decoration: const InputDecoration(
-              labelText: 'Режимді таңдаңыз',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: 30),
-
-          ElevatedButton.icon(
-            onPressed: _resetProgress,
-            icon: const Icon(Icons.refresh),
-            label: const Text("Прогресті жаңарту"),
-          ),
-          const SizedBox(height: 10),
-
-          ElevatedButton.icon(
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const AboutContent()),
-            ),
-            icon: const Icon(Icons.privacy_tip),
-            label: const Text("Құпиялық саясаты"),
-          ),
-          const SizedBox(height: 10),
-
-          ElevatedButton.icon(
-            onPressed: _logout,
-            icon: const Icon(Icons.logout),
-            label: const Text("Шығу"),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-          ),
-
-          const SizedBox(height: 30),
-        ],
-      ),
+        ),
     );
   }
 }
