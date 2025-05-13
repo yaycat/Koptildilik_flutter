@@ -1,20 +1,14 @@
-import 'dart:convert';
 import 'dart:math';
-
-import 'package:firebase_core/firebase_core.dart';
-import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter_tts/flutter_tts.dart';
-import 'user.dart';
-import 'package:firebase_core/firebase_core.dart';
-import 'user_storage.dart';
-import 'package:firebase_database/firebase_database.dart';
-import 'package:flutter/material.dart';
-import 'package:firebase_database/firebase_database.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter_tts/flutter_tts.dart';
+import 'dart:async';
 import 'dart:convert'; // для utf8 и base64
+import 'user_storage.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_tts/flutter_tts.dart';
+import 'package:firebase_database/firebase_database.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:crypto/crypto.dart'; // для sha256
+import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 bool isGuest = false;
 
@@ -182,12 +176,82 @@ class _FirstScreenState extends State<FirstScreen> {
 
 //AUTH SCREEN------------------------------------------------------------------------------------------------------------
 
-class AuthScreen extends StatelessWidget {
+class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
+
+  @override
+  State<AuthScreen> createState() => _AuthScreenState();
+}
+
+class _AuthScreenState extends State<AuthScreen> {
+  late StreamSubscription<ConnectivityResult> _subscription;
+  bool _isOffline = false;
+  bool _buttonsDisabled = false;
+  final _scaffoldKey = GlobalKey<ScaffoldState>();
+  ScaffoldFeatureController<SnackBar, SnackBarClosedReason>? _snackBarController;
+
+  @override
+  void initState() {
+    super.initState();
+    _subscription = Connectivity().onConnectivityChanged.listen((result) {
+      final hasConnection = result != ConnectivityResult.none;
+
+      if (!hasConnection && !_isOffline) {
+        setState(() => _isOffline = true);
+        _showOfflineSnackBar();
+      } else if (hasConnection && _isOffline) {
+        setState(() => _isOffline = false);
+        _removeSnackBar();
+      }
+    });
+  }
+
+  void _showOfflineSnackBar() {
+    _snackBarController = ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text("Интернетке қосылу жоқ"),
+        duration: const Duration(days: 1), // Долго держим
+        action: SnackBarAction(
+          label: 'Перезапуск',
+          onPressed: () {
+            // перезапуск экрана
+            Navigator.pushReplacement(
+              context,
+              PageRouteBuilder(
+                pageBuilder: (_, __, ___) => const AuthScreen(),
+                transitionDuration: Duration.zero,
+              ),
+            );
+          },
+        ),
+        backgroundColor: Colors.red,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  void _removeSnackBar() {
+    _snackBarController?.close();
+    _snackBarController = null;
+  }
+
+  @override
+  void dispose() {
+    _subscription.cancel();
+    super.dispose();
+  }
+
+  void _handleLoginOrRegister() {
+    setState(() {
+      isGuest = false; // Сбросить значение isGuest
+      _buttonsDisabled = true; // Блокируем кнопки
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      key: _scaffoldKey,
       appBar: AppBar(title: const Text("Кіру")),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -201,18 +265,20 @@ class AuthScreen extends StatelessWidget {
             ),
             const SizedBox(height: 40),
             ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                minimumSize: const Size(double.infinity, 50),
-              ),
-              onPressed: () => Navigator.pushNamed(context, '/register'),
+              style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 50)),
+              onPressed: _buttonsDisabled ? null : () {
+                _handleLoginOrRegister();
+                Navigator.pushNamed(context, '/register');
+              },
               child: const Text("Тіркелу"),
             ),
             const SizedBox(height: 16),
             ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                minimumSize: const Size(double.infinity, 50),
-              ),
-              onPressed: () => Navigator.pushNamed(context, '/login'),
+              style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 50)),
+              onPressed: _buttonsDisabled ? null : () {
+                _handleLoginOrRegister();
+                Navigator.pushNamed(context, '/login');
+              },
               child: const Text("Кіру"),
             ),
             const SizedBox(height: 16),
@@ -225,8 +291,7 @@ class AuthScreen extends StatelessWidget {
                 isGuest = true;
                 Navigator.pushNamed(context, '/choose');
               },
-              child: const Text("Гость ретінде кіру",
-                  style: TextStyle(color: Colors.teal)),
+              child: const Text("Гость ретінде кіру", style: TextStyle(color: Colors.teal)),
             ),
           ],
         ),
@@ -234,6 +299,7 @@ class AuthScreen extends StatelessWidget {
     );
   }
 }
+
 
 
 
@@ -248,7 +314,6 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final _emailController = TextEditingController();
   final _loginController = TextEditingController();
   final _passwordController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
@@ -378,6 +443,9 @@ class ChooseScreen extends StatefulWidget {
 class _ChooseScreenState extends State<ChooseScreen> {
   late int _selectedIndex;
   final List<Widget> _screens = [];
+  late StreamSubscription<ConnectivityResult> _subscription;
+  bool _isOffline = false;
+  ScaffoldFeatureController<SnackBar, SnackBarClosedReason>? _snackBarController;
 
   @override
   void initState() {
@@ -387,7 +455,40 @@ class _ChooseScreenState extends State<ChooseScreen> {
       const SecondScreen(),
       const ThirdScreen(),
     ]);
+    _subscription = Connectivity().onConnectivityChanged.listen((result) {
+      final hasConnection = result != ConnectivityResult.none;
+      if (!hasConnection && !_isOffline) {
+        setState(() => _isOffline = true);
+        _showOfflineSnackBar();
+      } else if (hasConnection && _isOffline) {
+        setState(() => _isOffline = false);
+        _removeSnackBar();
+      }
+    });
   }
+
+  void _showOfflineSnackBar() {
+    _snackBarController = ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text("Интернетке қосылу жоқ"),
+        duration: const Duration(days: 1),
+        backgroundColor: Colors.red,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  void _removeSnackBar() {
+    _snackBarController?.close();
+    _snackBarController = null;
+  }
+
+  @override
+  void dispose() {
+    _subscription.cancel();
+    super.dispose();
+  }
+
 
   void _onItemTapped(int index) {
     setState(() {
@@ -437,6 +538,9 @@ class MainScreen extends StatefulWidget {
 class _MainScreenState extends State<MainScreen> {
   late int _selectedIndex;
   final List<Widget> _screens = [];
+  late StreamSubscription<ConnectivityResult> _subscription;
+  bool _isOffline = false;
+  ScaffoldFeatureController<SnackBar, SnackBarClosedReason>? _snackBarController;
 
   @override
   void initState() {
@@ -450,6 +554,38 @@ class _MainScreenState extends State<MainScreen> {
         changeTheme: widget.changeTheme,
       )
     ]);
+    _subscription = Connectivity().onConnectivityChanged.listen((result) {
+      final hasConnection = result != ConnectivityResult.none;
+      if (!hasConnection && !_isOffline) {
+        setState(() => _isOffline = true);
+        _showOfflineSnackBar();
+      } else if (hasConnection && _isOffline) {
+        setState(() => _isOffline = false);
+        _removeSnackBar();
+      }
+    });
+  }
+
+  void _showOfflineSnackBar() {
+    _snackBarController = ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text("Интернетке қосылу жоқ"),
+        duration: const Duration(days: 1),
+        backgroundColor: Colors.red,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  void _removeSnackBar() {
+    _snackBarController?.close();
+    _snackBarController = null;
+  }
+
+  @override
+  void dispose() {
+    _subscription.cancel();
+    super.dispose();
   }
 
   void _onItemTapped(int index) {
@@ -601,7 +737,6 @@ class ThirdScreen extends StatelessWidget {
 
 
 // WORD SCREEN PAGE --------------------------------------------------------------------
-
 class WordScreen extends StatefulWidget {
   const WordScreen({super.key});
 
@@ -617,12 +752,28 @@ class _WordScreenState extends State<WordScreen> {
   String currentWord = '';
   String correctAnswer = '';
   List<String> options = [];
+  String learningMode = 'cards';
+
+  String? selectedLeft;
+  String? selectedRight;
+  List<Map<String, String>> matchBatch = [];
+  List<String> matchedWords = [];
+  List<String> rightColumn = [];
 
   @override
   void initState() {
     super.initState();
+    _loadLearningMode();
     _loadWordsFromFirebase();
   }
+
+  Future<void> _loadLearningMode() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      learningMode = prefs.getString('learning_mode') ?? 'cards';
+    });
+  }
+
 
   Future<void> _loadWordsFromFirebase() async {
     final prefs = await SharedPreferences.getInstance();
@@ -654,7 +805,12 @@ class _WordScreenState extends State<WordScreen> {
         };
       }).toList();
 
-      _loadCurrentWord();
+      if (learningMode == 'cards') {
+        _loadCurrentWord();
+      } else {
+        _loadNextMatchBatch();
+      }
+      setState(() {});
     }
   }
 
@@ -669,6 +825,23 @@ class _WordScreenState extends State<WordScreen> {
     } else {
       _showLevelCompleteDialog();
     }
+  }
+
+  void _loadNextMatchBatch() {
+    if (currentWordIndex >= wordList.length) {
+      _showLevelCompleteDialog();
+      return;
+    }
+    final remaining = wordList.skip(currentWordIndex).take(4).toList();
+    matchBatch = remaining.map((e) => {
+      'foreign': e['foreign'].toString(),
+      'kazakh': e['kazakh'].toString(),
+    }).toList();
+    rightColumn = matchBatch.map((e) => e['kazakh']!).toList()..shuffle();
+    rightColumn.shuffle();
+    matchedWords.clear();
+    selectedLeft = null;
+    selectedRight = null;
   }
 
   List<String> _generateOptions(String correct) {
@@ -754,49 +927,184 @@ class _WordScreenState extends State<WordScreen> {
     );
   }
 
+  void _tryMatch() {
+    if (selectedLeft != null && selectedRight != null) {
+      final match = matchBatch.firstWhere(
+            (pair) => pair['foreign'] == selectedLeft && pair['kazakh'] == selectedRight,
+        orElse: () => {},
+      );
+
+      final correct = match.isNotEmpty;
+      if (correct) {
+        setState(() {
+          matchedWords.add(selectedLeft!);
+          selectedLeft = null;
+          selectedRight = null;
+        });
+      } else {
+        showDialog(
+          context: context,
+          builder: (_) => AlertDialog(
+            title: const Text("❌ Қате"),
+            content: const Text("Бұл сөзге сәйкес емес."),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  setState(() {
+                    selectedLeft = null;
+                    selectedRight = null;
+                  });
+                },
+                child: const Text("OK"),
+              )
+            ],
+          ),
+        );
+      }
+
+      if (matchedWords.length >= matchBatch.length) {
+        Future.delayed(const Duration(milliseconds: 500), () {
+          setState(() {
+            currentWordIndex += 4;
+          });
+          _loadNextMatchBatch();
+        });
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text("Сөзді таңда")),
-      body: currentWord.isEmpty
+      body: wordList.isEmpty
           ? const Center(child: CircularProgressIndicator())
-          : Padding(
-        padding: const EdgeInsets.all(24.0),
-        child: Column(
-          children: [
-            const Spacer(flex: 2),
-            Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                border: Border.all(color: Colors.teal, width: 2),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(
-                currentWord,
-                style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
-              ),
+          : (learningMode == 'quiz' ? _buildMatchingView() : _buildQuizView()),
+    );
+  }
+
+  Widget _buildQuizView() {
+    return Padding(
+      padding: const EdgeInsets.all(24.0),
+      child: Column(
+        children: [
+          const Spacer(flex: 2),
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              border: Border.all(color: Colors.teal, width: 2),
+              borderRadius: BorderRadius.circular(12),
             ),
-            const SizedBox(height: 16),
-            IconButton(
-              onPressed: _speak,
-              icon: const Icon(Icons.volume_up, size: 32, color: Colors.teal),
+            child: Text(
+              currentWord,
+              style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
             ),
-            const Spacer(),
-            ...options.map((option) => Padding(
-              padding: const EdgeInsets.symmetric(vertical: 6.0),
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  backgroundColor: Colors.teal,
-                  minimumSize: const Size.fromHeight(50),
+          ),
+          const SizedBox(height: 16),
+          IconButton(
+            onPressed: _speak,
+            icon: const Icon(Icons.volume_up, size: 32, color: Colors.teal),
+          ),
+          const Spacer(),
+          ...options.map((option) => Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6.0),
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                backgroundColor: Colors.teal,
+                minimumSize: const Size.fromHeight(50),
+              ),
+              onPressed: () => _checkAnswer(option),
+              child: Text(option, style: const TextStyle(fontSize: 18)),
+            ),
+          )),
+          const Spacer(flex: 2),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMatchingView() {
+    final leftWords = matchBatch.map((e) => e['foreign']!).toList();
+
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        children: [
+          const Text("Сөздер мен аудармаларды сәйкестендір", style: TextStyle(fontSize: 18)),
+          const SizedBox(height: 20),
+          Expanded(
+            child: Row(
+              children: [
+                Expanded(
+                  child: ListView(
+                    children: leftWords.map((word) {
+                      final isSelected = selectedLeft == word;
+                      final isMatched = matchedWords.contains(word);
+                      return GestureDetector(
+                        onTap: isMatched
+                            ? null
+                            : () {
+                          setState(() => selectedLeft = word);
+                          _tryMatch();
+                        },
+                        child: Container(
+                          margin: const EdgeInsets.symmetric(vertical: 8),
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: isMatched
+                                ? Colors.green[300]
+                                : (isSelected ? Colors.teal[100] : Colors.teal[50]),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(word, textAlign: TextAlign.center, style: const TextStyle(color: Colors.black),),
+                        ),
+                      );
+                    }).toList(),
+                  ),
                 ),
-                onPressed: () => _checkAnswer(option),
-                child: Text(option, style: const TextStyle(fontSize: 18)),
-              ),
-            )),
-            const Spacer(flex: 2),
-          ],
-        ),
+                const SizedBox(width: 10),
+                Container(
+                  width: 1,
+                  color: Colors.grey.shade300,
+                  margin: const EdgeInsets.symmetric(horizontal: 8),
+                ),
+                Expanded(
+                  child: ListView(
+                    children: rightColumn.map((word) {
+                      final matchedEntry = matchBatch.firstWhere(
+                            (e) => e['kazakh'] == word,
+                        orElse: () => {},
+                      );
+                      final isMatched = matchedWords.contains(matchedEntry['foreign']);
+                      final isSelected = selectedRight == word;
+                      return GestureDetector(
+                        onTap: isMatched
+                            ? null
+                            : () {
+                          setState(() => selectedRight = word);
+                          _tryMatch();
+                        },
+                        child: Container(
+                          margin: const EdgeInsets.symmetric(vertical: 8),
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: isMatched
+                                ? Colors.green[300]
+                                : (isSelected ? Colors.teal[100] : Colors.teal[50]),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(word, textAlign: TextAlign.center, style: const TextStyle(color: Colors.black)),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1114,22 +1422,6 @@ class __SettingsContentState extends State<_SettingsContent> {
     if (mounted) {
       Navigator.pushReplacementNamed(context, '/choose');
     }
-  }
-
-
-  void _showPrivacyPolicy() {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text("🔐 Құпиялық саясаты"),
-        content: const Text(
-          "Бұл қолданба тек оқу мақсатында жасалған. Жеке мәліметтер Firebase жүйесінде қауіпсіз сақталады.",
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Жабу"))
-        ],
-      ),
-    );
   }
 
 

@@ -26,4 +26,6 @@ plugins {
 
 
 
+include(":app2")
+include(":app2")
 include(":app")
