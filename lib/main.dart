@@ -379,6 +379,8 @@ class _LoginScreenState extends State<LoginScreen> {
       await prefs.setString('selected_language', user['language']);
       await prefs.setString('selected_topic', user['topic']);
       await prefs.setInt('user_level', user['level'] ?? 1);
+      final now = DateTime.now().toIso8601String();
+      await dbRef.child('Accounts/$login/lastLoginAt').set(now); // ✅ Обновить время последнего входа
 
       if (mounted) {
         Navigator.pushReplacementNamed(context, '/main');
@@ -488,6 +490,9 @@ class _LoginWithPinScreenState extends State<LoginWithPinScreen> {
       await prefs.setString('selected_language', user['language']);
       await prefs.setString('selected_topic', user['topic']);
       await prefs.setInt('user_level', user['level'] ?? 1);
+      final now = DateTime.now().toIso8601String();
+      await dbRef.child('Accounts/$login/lastLoginAt').set(now); // ✅ Обновить время последнего входа
+
 
       if (mounted) {
         Navigator.pushReplacementNamed(context, '/main');
@@ -912,6 +917,7 @@ class SecondScreen extends StatelessWidget {
             final displayName = "${lang["flag"]!} ${lang["name"]!}";
             return ElevatedButton(
               onPressed: () async {
+                await _saveSelectedLanguage(displayName, lang["code"]!);
                 await _saveSelectedLanguage(displayName, lang["code"]!);
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(content: Text("${lang["name"]} таңдалды")),
@@ -1553,6 +1559,7 @@ class _FormScreenState extends State<FormScreen> {
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
     final dbRef = FirebaseDatabase.instance.ref().child('Accounts');
+    final now = DateTime.now().toIso8601String(); // 🔥 Уақытты алу
 
     final snapshot = await dbRef.child(login).get();
     if (snapshot.exists) {
@@ -1578,6 +1585,8 @@ class _FormScreenState extends State<FormScreen> {
       "language": defaultLang,
       "topic": defaultTopic,
       "level": defaultLevel,
+      "registeredAt": now,
+      "lastLoginAt": now,
     });
 
     final prefs = await SharedPreferences.getInstance();
@@ -1754,6 +1763,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String login = '';
   String language = '';
   String topic = '';
+  String registeredAt = '';
+  String lastLoginAt = '';
   int level = 1;
 
   @override
@@ -1762,15 +1773,44 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _loadUserData();
   }
 
+  String formatDateTime(String dateTimeString) {
+    try {
+      final dt = DateTime.parse(dateTimeString);
+      final day = dt.day.toString().padLeft(2, '0');
+      final month = dt.month.toString().padLeft(2, '0');
+      final year = dt.year.toString();
+      final hour = dt.hour.toString().padLeft(2, '0');
+      final minute = dt.minute.toString().padLeft(2, '0');
+      final second = dt.second.toString().padLeft(2, '0');
+      return "$day-$month-$year. $hour:$minute:$second";
+    } catch (e) {
+      return dateTimeString; // если формат не распарсился, вернуть оригинал
+    }
+  }
+
+
   Future<void> _loadUserData() async {
     final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      login = prefs.getString('login') ?? 'Қонақ';
-      language = prefs.getString('selected_language') ?? 'Қазақ тілі';
-      topic = prefs.getString('selected_topic') ?? 'Байланыс';
-      level = prefs.getInt('user_level') ?? 1;
-    });
+    final dbRef = FirebaseDatabase.instance.ref();
+    final currentLogin = prefs.getString('login') ?? '';
+
+    if (currentLogin.isNotEmpty) {
+      final snapshot = await dbRef.child('Accounts/$currentLogin').get();
+      final user = snapshot.value as Map?;
+
+      setState(() {
+        login = currentLogin;
+        language = prefs.getString('selected_language') ?? 'Қазақ тілі';
+        topic = prefs.getString('selected_topic') ?? 'Байланыс';
+        level = prefs.getInt('user_level') ?? 1;
+        registeredAt = formatDateTime(user?['registeredAt'] ?? '');
+        lastLoginAt = formatDateTime(user?['lastLoginAt'] ?? '');
+      });
+    }
   }
+
+
+
 
   @override
   Widget build(BuildContext context) {
@@ -1809,6 +1849,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
               leading: const Icon(Icons.star),
               title: Text("Деңгей: $level"),
             ),
+            ListTile(
+              leading: const Icon(Icons.calendar_today),
+              title: Text("Тіркелген күні: $registeredAt"),
+            ),
+            ListTile(
+              leading: const Icon(Icons.login),
+              title: Text("Соңғы кіру: $lastLoginAt"),
+            ),
+
           ],
         ),
       ),
@@ -1935,7 +1984,19 @@ class __SettingsContentState extends State<_SettingsContent> {
     }
 
     return Scaffold(
-      appBar: AppBar(title: const Text("Баптау")), // Добавленный AppBar
+      appBar: AppBar(
+        title: const Text("Баптау"),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text("Ақпарат жаңартылды.")),
+              );
+            },
+          ),
+        ],
+      ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
