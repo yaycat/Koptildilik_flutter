@@ -7,7 +7,7 @@ pluginManagement {
         flutterSdkPath
     }
 
-    includeBuild("/home/yaycat/flutter/packages/flutter_tools/gradle")
+    includeBuild("/Users/yaycat/flutter/packages/flutter_tools/gradle")
 
 
     repositories {

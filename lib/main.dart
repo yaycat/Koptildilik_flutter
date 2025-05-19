@@ -3,6 +3,7 @@ import 'dart:async';
 import 'dart:convert'; // для utf8 и base64
 import 'user_storage.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -54,13 +55,16 @@ class _MyAppState extends State<MyApp> {
           changeLocale: _changeLocale,
         ),
         '/second': (context) => const SecondScreen(),
+        '/create_pin': (context) => const CreatePinScreen(),
         '/third': (context) => const ThirdScreen(),
         '/word': (context) => const WordScreen(),
         '/about': (context) => const AboutContent(),
         '/auth': (context) => const AuthScreen(),
         '/profile': (context) => const ProfileScreen(),
         '/login': (context) => const LoginScreen(),
+        '/progress': (context) => const ProgressScreen(),
         '/register': (context) => const FormScreen(),
+        '/login_with_pin': (context) => const LoginWithPinScreen(),
         '/choose': (context) => ChooseScreen(
           currentIndex: 0,
           changeTheme: _changeTheme,
@@ -244,7 +248,7 @@ class _AuthScreenState extends State<AuthScreen> {
   void _handleLoginOrRegister() {
     setState(() {
       isGuest = false; // Сбросить значение isGuest
-      _buttonsDisabled = true; // Блокируем кнопки
+      _buttonsDisabled = false; // Блокируем кнопки
     });
   }
 
@@ -280,6 +284,15 @@ class _AuthScreenState extends State<AuthScreen> {
                 Navigator.pushNamed(context, '/login');
               },
               child: const Text("Кіру"),
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 50)),
+              onPressed: _buttonsDisabled ? null : () {
+                _handleLoginOrRegister();
+                Navigator.pushNamed(context, '/login_with_pin');
+              },
+              child: const Text("Кіру пин-кодпен"),
             ),
             const SizedBox(height: 16),
             OutlinedButton(
@@ -422,6 +435,115 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 }
 
+//PINCODE LOGIN PAGE---------------------------------------------------------------------------
+class LoginWithPinScreen extends StatefulWidget {
+  const LoginWithPinScreen({super.key});
+
+  @override
+  State<LoginWithPinScreen> createState() => _LoginWithPinScreenState();
+}
+
+class _LoginWithPinScreenState extends State<LoginWithPinScreen> {
+  final _formKey = GlobalKey<FormState>();
+  final _loginController = TextEditingController();
+  final _pinController = TextEditingController();
+  bool _loading = false;
+  String _errorMessage = '';
+
+  Future<void> _loginWithPin() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    setState(() {
+      _loading = true;
+      _errorMessage = '';
+    });
+
+    final login = _loginController.text.trim();
+    final pin = _pinController.text.trim();
+
+    final dbRef = FirebaseDatabase.instance.ref();
+    final snapshot = await dbRef.child('Accounts/$login').get();
+
+    if (!snapshot.exists) {
+      setState(() {
+        _loading = false;
+        _errorMessage = "Пайдаланушы табылмады.";
+      });
+      return;
+    }
+
+    final user = snapshot.value as Map;
+
+    if (user['pinCode'] == null) {
+      setState(() {
+        _loading = false;
+        _errorMessage = "Бұл қолданушыда пин-код орнатылмаған.";
+      });
+      return;
+    }
+
+    if (user['pinCode'] == pin) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('login', login);
+      await prefs.setString('selected_language', user['language']);
+      await prefs.setString('selected_topic', user['topic']);
+      await prefs.setInt('user_level', user['level'] ?? 1);
+
+      if (mounted) {
+        Navigator.pushReplacementNamed(context, '/main');
+      }
+    } else {
+      setState(() {
+        _loading = false;
+        _errorMessage = "Пин-код дұрыс емес.";
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text("Пин-кодпен кіру")),
+      body: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            children: [
+              TextFormField(
+                controller: _loginController,
+                decoration: const InputDecoration(labelText: "Логин"),
+                validator: (val) => val == null || val.isEmpty ? "Логин енгізіңіз" : null,
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _pinController,
+                decoration: const InputDecoration(labelText: "Пин-код"),
+                maxLength: 4,
+                obscureText: true,
+                keyboardType: TextInputType.number,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                validator: (val) =>
+                val == null || val.length != 4 ? "4 таңбалы пин-код енгізіңіз" : null,
+              ),
+              const SizedBox(height: 20),
+              if (_errorMessage.isNotEmpty)
+                Text(_errorMessage, style: const TextStyle(color: Colors.red)),
+              const SizedBox(height: 10),
+              _loading
+                  ? const CircularProgressIndicator()
+                  : ElevatedButton(
+                onPressed: _loginWithPin,
+                child: const Text("Кіру"),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 
 //ALL CHOOSE SCREEN --------------------------------------------------------------------------
 class ChooseScreen extends StatefulWidget {
@@ -547,6 +669,7 @@ class _MainScreenState extends State<MainScreen> {
     super.initState();
     _selectedIndex = widget.currentIndex;
     _screens.addAll([
+      const ProgressScreen(),
       const WordScreen(),
       const ProfileScreen(),
       _SettingsContent(
@@ -605,6 +728,7 @@ class _MainScreenState extends State<MainScreen> {
         selectedItemColor: Colors.teal,
         unselectedItemColor: Colors.grey,
         items: const [
+          BottomNavigationBarItem(icon: Icon(Icons.route), label: 'Прогресс'),
           BottomNavigationBarItem(icon: Icon(Icons.school), label: 'Сөздер'),
           BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Профиль'),
           BottomNavigationBarItem(icon: Icon(Icons.settings), label: 'Баптау'),
@@ -615,7 +739,141 @@ class _MainScreenState extends State<MainScreen> {
 }
 
 
+//PROGRESS PAGE--------------------------------------------------------------------------
+class ProgressScreen extends StatefulWidget {
+  const ProgressScreen({super.key});
 
+  @override
+  State<ProgressScreen> createState() => _ProgressScreenState();
+}
+
+class _ProgressScreenState extends State<ProgressScreen> {
+  int currentLevel = 1;
+  bool loading = true;
+  final int totalLevels = 6;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserLevel();
+  }
+
+  Future<void> _loadUserLevel() async {
+    final prefs = await SharedPreferences.getInstance();
+    final login = prefs.getString('login');
+    final dbRef = FirebaseDatabase.instance.ref().child("Accounts/$login/level");
+
+    final snapshot = await dbRef.get();
+    if (snapshot.exists) {
+      setState(() {
+        currentLevel = snapshot.value as int;
+        loading = false;
+      });
+    } else {
+      setState(() => loading = false);
+    }
+  }
+
+  Widget _buildChessLevelStep(int level) {
+    final isReached = level <= currentLevel;
+    final alignment = level.isOdd ? Alignment.centerLeft : Alignment.centerRight;
+
+    return Align(
+      alignment: alignment,
+      child: Column(
+        crossAxisAlignment:
+        level.isOdd ? CrossAxisAlignment.start : CrossAxisAlignment.end,
+        children: [
+          Container(
+            margin: const EdgeInsets.symmetric(vertical: 24),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            decoration: BoxDecoration(
+              color: isReached ? Colors.teal : Colors.grey.shade300,
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black12,
+                  blurRadius: 8,
+                  offset: Offset(0, 3),
+                )
+              ],
+            ),
+            child: Text(
+              'Деңгей $level',
+              style: const TextStyle(fontSize: 18, color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRoadLine() {
+    return Positioned.fill(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          return CustomPaint(
+            painter: RoadPainter(levelCount: totalLevels),
+          );
+        },
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text("Прогресс")),
+      body: loading
+          ? const Center(child: CircularProgressIndicator())
+          : Stack(
+        children: [
+          _buildRoadLine(),
+          ListView.builder(
+            padding: const EdgeInsets.symmetric(vertical: 40),
+            itemCount: totalLevels,
+            itemBuilder: (context, index) {
+              final level = index + 1;
+              return _buildChessLevelStep(level);
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class RoadPainter extends CustomPainter {
+  final int levelCount;
+
+  RoadPainter({required this.levelCount});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = Colors.teal.withOpacity(0.3)
+      ..strokeWidth = 4
+      ..style = PaintingStyle.stroke;
+
+    final double verticalSpacing = size.height / (levelCount + 1);
+    final path = Path();
+
+    for (int i = 0; i < levelCount - 1; i++) {
+      final y1 = verticalSpacing * (i + 1);
+      final y2 = verticalSpacing * (i + 2);
+      final x1 = i.isEven ? 40.0 : size.width - 40.0;
+      final x2 = (i + 1).isEven ? 40.0 : size.width - 40.0;
+
+      path.moveTo(x1, y1);
+      path.lineTo(x2, y2);
+    }
+
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(CustomPainter oldDelegate) => true;
+}
 
 
 
@@ -746,9 +1004,11 @@ class WordScreen extends StatefulWidget {
 
 class _WordScreenState extends State<WordScreen> {
   final FlutterTts flutterTts = FlutterTts();
+  final TextEditingController _answerController = TextEditingController();
   String selectedLanguage = 'en';
   List<Map<String, dynamic>> wordList = [];
   int currentWordIndex = 0;
+  int incorrectTries = 0;
   String currentWord = '';
   String correctAnswer = '';
   List<String> options = [];
@@ -789,11 +1049,11 @@ class _WordScreenState extends State<WordScreen> {
       final data = Map<String, dynamic>.from(snapshot.value as Map);
 
       final langFieldMap = {
-        'en': 'english',
-        'de': 'german',
-        'ru': 'russian',
-        'es': 'spanish',
-        'kk': 'kazakh',
+        '🇬🇧 Ағылшын тілі': 'english',
+        '🇩🇪 Неміс тілі': 'german',
+        '🇷🇺 Орыс тілі': 'russian',
+        '🇪🇸 Испан тілі': 'spanish',
+        '🇰🇿 Қазақ тілі': 'kazakh',
       };
       final translationKey = langFieldMap[selectedLanguage] ?? 'english';
 
@@ -807,8 +1067,16 @@ class _WordScreenState extends State<WordScreen> {
 
       if (learningMode == 'cards') {
         _loadCurrentWord();
-      } else {
+      } else if (learningMode == 'quiz') {
         _loadNextMatchBatch();
+      } else if (learningMode == 'write') {
+        if (currentWordIndex < wordList.length) {
+          final wordData = wordList[currentWordIndex];
+          currentWord = wordData['foreign'];
+          correctAnswer = wordData['kazakh'];
+        } else {
+          _showLevelCompleteDialog();
+        }
       }
       setState(() {});
     }
@@ -845,7 +1113,15 @@ class _WordScreenState extends State<WordScreen> {
   }
 
   List<String> _generateOptions(String correct) {
-    final fakeAnswers = ['жауап 1', 'жауап 2', 'жауап 3', correct];
+    final allKazakhWords = wordList
+        .map((e) => e['kazakh'] as String)
+        .where((word) => word != correct)
+        .toSet()
+        .toList();
+
+    allKazakhWords.shuffle();
+
+    final fakeAnswers = allKazakhWords.take(3).toList()..add(correct);
     fakeAnswers.shuffle();
     return fakeAnswers;
   }
@@ -860,9 +1136,15 @@ class _WordScreenState extends State<WordScreen> {
     };
 
     final ttsLang = ttsLanguageMap[selectedLanguage] ?? 'en-US';
+
     await flutterTts.setLanguage(ttsLang);
     await flutterTts.setSpeechRate(0.5);
-    await flutterTts.speak(currentWord);
+    await flutterTts.setPitch(1.0);
+    await flutterTts.setVolume(1.0);
+
+    if (currentWord.isNotEmpty) {
+      await flutterTts.speak(currentWord);
+    }
   }
 
   void _checkAnswer(String answer) {
@@ -903,7 +1185,7 @@ class _WordScreenState extends State<WordScreen> {
     await prefs.setInt('user_level', nextLevel);
 
     final dbRef = FirebaseDatabase.instance.ref();
-    await dbRef.child('users/$login/level').set(nextLevel);
+    await dbRef.child('Accounts/$login/level').set(nextLevel);
 
     showDialog(
       context: context,
@@ -980,9 +1262,128 @@ class _WordScreenState extends State<WordScreen> {
       appBar: AppBar(title: const Text("Сөзді таңда")),
       body: wordList.isEmpty
           ? const Center(child: CircularProgressIndicator())
-          : (learningMode == 'quiz' ? _buildMatchingView() : _buildQuizView()),
+          : Builder(
+        builder: (context) {
+          if (learningMode == 'quiz') {
+            return _buildMatchingView();
+          } else if (learningMode == 'write') {
+            return _buildWritingView();
+          } else {
+            return _buildQuizView();
+          }
+        },
+      ),
     );
   }
+
+
+  Widget _buildWritingView() {
+    return Padding(
+      padding: const EdgeInsets.all(24.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const SizedBox(height: 50),
+          Center(
+            child: IconButton(
+              onPressed: () => _speakWordForWriteMode(),
+              icon: const Icon(Icons.volume_up, size: 48, color: Colors.teal),
+            ),
+          ),
+          const SizedBox(height: 40),
+          TextField(
+            controller: _answerController,
+            decoration: const InputDecoration(
+              labelText: 'Сөзді жазыңыз',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 20),
+          ElevatedButton(
+            onPressed: _checkTypedAnswer,
+            child: const Text('Тексеру'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _speakWordForWriteMode() async {
+    final ttsLanguageMap = {
+      'en': 'en-US',
+      'de': 'de-DE',
+      'ru': 'ru-RU',
+      'es': 'es-ES',
+      'kk': 'kk-KZ',
+    };
+
+    final ttsLang = ttsLanguageMap[selectedLanguage] ?? 'en-US';
+    await flutterTts.setLanguage(ttsLang);
+    await flutterTts.setSpeechRate(0.5);
+    await flutterTts.setPitch(1.0);
+    await flutterTts.setVolume(1.0);
+
+    if (currentWordIndex < wordList.length) {
+      final word = wordList[currentWordIndex]['foreign'] ?? '';
+      if (word.isNotEmpty) {
+        await flutterTts.speak(word);
+      }
+    }
+  }
+
+  void _checkTypedAnswer() {
+    final typed = _answerController.text.trim().toLowerCase();
+    final expected = currentWord.trim().toLowerCase();
+
+    if (typed == expected) {
+      incorrectTries = 0;
+      _answerController.clear();
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("✅ Дұрыс!")),
+      );
+
+      Future.delayed(const Duration(milliseconds: 500), () {
+        setState(() {
+          currentWordIndex++;
+        });
+        _loadCurrentWord();
+      });
+    } else {
+      incorrectTries++;
+
+      if (incorrectTries >= 3) {
+        final correct = currentWord;
+        showDialog(
+          context: context,
+          builder: (_) => AlertDialog(
+            title: const Text("❌ Қате"),
+            content: Text("Дұрыс жауап: $correct"),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  incorrectTries = 0;
+                  _answerController.clear();
+                  setState(() {
+                    currentWordIndex++;
+                  });
+                  _loadCurrentWord();
+                },
+                child: const Text("Келесі"),
+              )
+            ],
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Қате (${incorrectTries}/3). Қайта көріңіз.")),
+        );
+      }
+    }
+  }
+
+
 
   Widget _buildQuizView() {
     return Padding(
@@ -1113,7 +1514,7 @@ class _WordScreenState extends State<WordScreen> {
 
 
 
-//LOGIN AND REGISTER PAGE---------------------------------------------------------------------------
+//REGISTER PAGE---------------------------------------------------------------------------
 class FormScreen extends StatefulWidget {
   const FormScreen({super.key});
 
@@ -1186,7 +1587,7 @@ class _FormScreenState extends State<FormScreen> {
     await prefs.setInt('user_level', defaultLevel);
 
     if (mounted) {
-      Navigator.pushReplacementNamed(context, '/choose');
+      Navigator.pushReplacementNamed(context, '/create_pin');
     }
   }
 
@@ -1243,6 +1644,99 @@ class _FormScreenState extends State<FormScreen> {
 }
 
 
+//CREATING PINCODE PAGE--------------------------------------------------------------------------------------------
+class CreatePinScreen extends StatefulWidget {
+  const CreatePinScreen({super.key});
+
+  @override
+  State<CreatePinScreen> createState() => _CreatePinScreenState();
+}
+
+class _CreatePinScreenState extends State<CreatePinScreen> {
+  final _formKey = GlobalKey<FormState>();
+  final _pinController = TextEditingController();
+  bool _loading = false;
+  String _errorMessage = '';
+
+  Future<void> _savePinCode() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    setState(() {
+      _loading = true;
+      _errorMessage = '';
+    });
+
+    final prefs = await SharedPreferences.getInstance();
+    final login = prefs.getString('login');
+
+    if (login == null) {
+      setState(() {
+        _loading = false;
+        _errorMessage = "Логин табылмады. Қайта тіркеліңіз.";
+      });
+      return;
+    }
+
+    final pin = _pinController.text.trim();
+    final dbRef = FirebaseDatabase.instance.ref().child('Accounts');
+
+    await dbRef.child(login).update({
+      "pinCode": pin,
+    });
+
+    if (mounted) {
+      Navigator.pushReplacementNamed(context, '/choose'); // change to your next screen
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text("Пин-код орнату")),
+      body: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            children: [
+              const Text(
+                "4 таңбалы Пин-код ойлап табыңыз",
+                style: TextStyle(fontSize: 18),
+              ),
+              const SizedBox(height: 24),
+              TextFormField(
+                controller: _pinController,
+                keyboardType: TextInputType.number,
+                maxLength: 4,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: 'Пин-код',
+                  border: OutlineInputBorder(),
+                ),
+                validator: (val) {
+                  if (val == null || val.length != 4 || !RegExp(r'^\d{4}$').hasMatch(val)) {
+                    return "Тек 4 цифр енгізіңіз";
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 20),
+              if (_errorMessage.isNotEmpty)
+                Text(_errorMessage, style: const TextStyle(color: Colors.red)),
+              if (_loading)
+                const CircularProgressIndicator()
+              else
+                ElevatedButton(
+                  onPressed: _savePinCode,
+                  child: const Text("Сақтау"),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 
 
@@ -1441,99 +1935,100 @@ class __SettingsContentState extends State<_SettingsContent> {
     }
 
     return Scaffold(
-        appBar: AppBar(title: const Text("Баптау")), // Добавленный AppBar
-        body: SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Text("\n"),
-              const Text("🎨 Тема режимі", style: TextStyle(fontWeight: FontWeight.bold)),
-              const SizedBox(height: 8),
-              DropdownButtonFormField<ThemeMode>(
-                value: _themeMode,
-                decoration: const InputDecoration(border: OutlineInputBorder()),
-                items: const [
-                  DropdownMenuItem(value: ThemeMode.light, child: Text("Ақшыл")),
-                  DropdownMenuItem(value: ThemeMode.dark, child: Text("Қараңғы")),
-                ],
-                onChanged: (mode) {
-                  if (mode != null) _changeThemeMode(mode);
-                  },
+      appBar: AppBar(title: const Text("Баптау")), // Добавленный AppBar
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text("\n"),
+            const Text("🎨 Тема режимі", style: TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            DropdownButtonFormField<ThemeMode>(
+              value: _themeMode,
+              decoration: const InputDecoration(border: OutlineInputBorder()),
+              items: const [
+                DropdownMenuItem(value: ThemeMode.light, child: Text("Ақшыл")),
+                DropdownMenuItem(value: ThemeMode.dark, child: Text("Қараңғы")),
+              ],
+              onChanged: (mode) {
+                if (mode != null) _changeThemeMode(mode);
+              },
+            ),
+            const SizedBox(height: 20),
+            const Text("🌐 Интерфейс тілі", style: TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            DropdownButtonFormField<String>(
+              value: _selectedLang,
+              items: const [
+                DropdownMenuItem(value: 'kk', child: Text('Қазақша')),
+                DropdownMenuItem(value: 'en', child: Text('English')),
+                DropdownMenuItem(value: 'ru', child: Text('Русский')),
+              ],
+              onChanged: (val) {
+                if (val != null) {
+                  setState(() => _selectedLang = val);
+                  widget.changeLocale(Locale(val));
+                }
+              },
+              decoration: const InputDecoration(
+                labelText: 'Тілді таңдаңыз',
+                border: OutlineInputBorder(),
               ),
-              const SizedBox(height: 20),
-              const Text("🌐 Интерфейс тілі", style: TextStyle(fontWeight: FontWeight.bold)),
-              const SizedBox(height: 8),
-              DropdownButtonFormField<String>(
-                value: _selectedLang,
-                items: const [
-                  DropdownMenuItem(value: 'kk', child: Text('Қазақша')),
-                  DropdownMenuItem(value: 'en', child: Text('English')),
-                  DropdownMenuItem(value: 'ru', child: Text('Русский')),
-                ],
-                onChanged: (val) {
-                  if (val != null) {
-                    setState(() => _selectedLang = val);
-                    widget.changeLocale(Locale(val));
-                  }
-                  },
-                decoration: const InputDecoration(
-                  labelText: 'Тілді таңдаңыз',
-                  border: OutlineInputBorder(),
-                ),
+            ),
+            const SizedBox(height: 20),
+            const Text("🧠 Оқу режимі", style: TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            DropdownButtonFormField<String>(
+              value: _learningMode,
+              items: const [
+                DropdownMenuItem(value: 'cards', child: Text('Карточкалар')),
+                DropdownMenuItem(value: 'quiz', child: Text('Викторина')),
+                DropdownMenuItem(value: 'write', child: Text('Сөз жаз')),
+              ],
+              onChanged: (val) async {
+                if (val != null) {
+                  setState(() => _learningMode = val);
+                  final prefs = await SharedPreferences.getInstance();
+                  await prefs.setString('learning_mode', val);
+                }},
+              decoration: const InputDecoration(
+                labelText: 'Режимді таңдаңыз',
+                border: OutlineInputBorder(),
               ),
-              const SizedBox(height: 20),
-              const Text("🧠 Оқу режимі", style: TextStyle(fontWeight: FontWeight.bold)),
-              const SizedBox(height: 8),
-              DropdownButtonFormField<String>(
-      value: _learningMode,
-      items: const [
-      DropdownMenuItem(value: 'cards', child: Text('Карточкалар')),
-      DropdownMenuItem(value: 'quiz', child: Text('Викторина')),
-    ],
-      onChanged: (val) async {
-      if (val != null) {
-      setState(() => _learningMode = val);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('learning_mode', val);
-    }},
-      decoration: const InputDecoration(
-      labelText: 'Режимді таңдаңыз',
-      border: OutlineInputBorder(),
-    ),
-    ),
-              const SizedBox(height: 30),
-              ElevatedButton.icon(
-                onPressed: _resetProgress,
-                icon: const Icon(Icons.refresh),
-                label: const Text("Прогресті жаңарту"),
+            ),
+            const SizedBox(height: 30),
+            ElevatedButton.icon(
+              onPressed: _resetProgress,
+              icon: const Icon(Icons.refresh),
+              label: const Text("Прогресті жаңарту"),
+            ),
+            const SizedBox(height: 10),
+            ElevatedButton.icon(
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const AboutContent()),
               ),
-              const SizedBox(height: 10),
-              ElevatedButton.icon(
-                onPressed: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const AboutContent()),
-                ),
-                icon: const Icon(Icons.privacy_tip),
-                label: const Text("Құпиялық саясаты"),
-              ),
-              const SizedBox(height: 10),
-              ElevatedButton.icon(
-                onPressed: _choose,
-                icon: const Icon(Icons.abc),
-                label: const Text("Тіл мен тақырыпты таңдаңыз"),
-              ),
-              const SizedBox(height: 10),
-              ElevatedButton.icon(
-                onPressed: _logout,
-                icon: const Icon(Icons.logout),
-                label: const Text("Шығу"),
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-              ),
-              const SizedBox(height: 30),
-            ],
-          ),
+              icon: const Icon(Icons.privacy_tip),
+              label: const Text("Құпиялық саясаты"),
+            ),
+            const SizedBox(height: 10),
+            ElevatedButton.icon(
+              onPressed: _choose,
+              icon: const Icon(Icons.abc),
+              label: const Text("Тіл мен тақырыпты таңдаңыз"),
+            ),
+            const SizedBox(height: 10),
+            ElevatedButton.icon(
+              onPressed: _logout,
+              icon: const Icon(Icons.logout),
+              label: const Text("Шығу"),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            ),
+            const SizedBox(height: 30),
+          ],
         ),
+      ),
     );
   }
 }
@@ -1566,10 +2061,10 @@ class AboutContent extends StatelessWidget {
               content: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                Text("🌱 Koptildilik — бұл көптілді оқуға арналған қосымша.\n",
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-                Text("📱 Жобаның мақсаты — қолданушыларға әртүрлі тілдерді меңгеруге көмектесу.", style: TextStyle(fontSize: 16)),
+                  Text("🌱 Koptildilik — бұл көптілді оқуға арналған қосымша.\n",
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  Text("📱 Жобаның мақсаты — қолданушыларға әртүрлі тілдерді меңгеруге көмектесу.", style: TextStyle(fontSize: 16)),
                 ],
               ),
             ),
