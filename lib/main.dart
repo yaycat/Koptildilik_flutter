@@ -3,7 +3,9 @@ import 'dart:async';
 import 'dart:convert'; // для utf8 и base64
 import 'user_storage.dart';
 import 'package:flutter/material.dart';
+import 'package:animations/animations.dart';
 import 'package:flutter/services.dart';
+import 'package:confetti/confetti.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -58,11 +60,11 @@ class _MyAppState extends State<MyApp> {
         '/create_pin': (context) => const CreatePinScreen(),
         '/third': (context) => const ThirdScreen(),
         '/word': (context) => const WordScreen(),
+        '/progress': (context) => const ProgressScreen(),
+        '/profile': (context) => const ProfileScreen(),
         '/about': (context) => const AboutContent(),
         '/auth': (context) => const AuthScreen(),
-        '/profile': (context) => const ProfileScreen(),
         '/login': (context) => const LoginScreen(),
-        '/progress': (context) => const ProgressScreen(),
         '/register': (context) => const FormScreen(),
         '/login_with_pin': (context) => const LoginWithPinScreen(),
         '/choose': (context) => ChooseScreen(
@@ -317,7 +319,7 @@ class _AuthScreenState extends State<AuthScreen> {
 
 
 
-//LOGIN SCREEN---------------------------------------------------------------------------------------------
+//LOGIN PAGE---------------------------------------------------------------------------------------------
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -333,11 +335,13 @@ class _LoginScreenState extends State<LoginScreen> {
   String errorMessage = '';
   bool _loading = false;
 
-  String hashPassword(String password, String salt) {
-    final bytes = utf8.encode(password + salt);
+  String hashPassword(String password, String saltBase64) {
+    final salt = base64.decode(saltBase64);
+    final bytes = utf8.encode(password) + salt;  // Конкатенация байтов пароля и соли
     final digest = sha256.convert(bytes);
-    return base64Encode(digest.bytes);
+    return base64.encode(digest.bytes);
   }
+
 
   Future<void> _loginUser() async {
     setState(() {
@@ -345,14 +349,34 @@ class _LoginScreenState extends State<LoginScreen> {
       _loading = true;
     });
 
-    final login = _loginController.text.trim();
-    final password = _passwordController.text.trim();
-
+    final enteredLogin = _loginController.text.trim();
+    final enteredPassword = _passwordController.text.trim();
 
     final dbRef = FirebaseDatabase.instance.ref();
-    final snapshot = await dbRef.child('Accounts/$login').get();
+    final snapshot = await dbRef.child('Accounts').get();
 
     if (!snapshot.exists) {
+      setState(() {
+        errorMessage = "Қате: база бос.";
+        _loading = false;
+      });
+      return;
+    }
+
+    Map? user;
+    String? userKey;
+
+    final accounts = snapshot.value as Map;
+    for (var entry in accounts.entries) {
+      final value = entry.value as Map;
+      if (value['login'] == enteredLogin) {
+        user = value;
+        userKey = entry.key;
+        break;
+      }
+    }
+
+    if (user == null || userKey == null) {
       setState(() {
         errorMessage = "Пайдаланушы табылмады.";
         _loading = false;
@@ -360,7 +384,6 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    final user = snapshot.value as Map;
     final salt = user['salt'];
     final storedHash = user['passwordHash'];
 
@@ -371,16 +394,17 @@ class _LoginScreenState extends State<LoginScreen> {
       });
       return;
     }
-    final enteredHash = hashPassword(password, salt);
+
+    final enteredHash = hashPassword(enteredPassword, salt);
 
     if (enteredHash == storedHash) {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('login', login);
+      await prefs.setString('login', user['login']);
       await prefs.setString('selected_language', user['language']);
       await prefs.setString('selected_topic', user['topic']);
       await prefs.setInt('user_level', user['level'] ?? 1);
       final now = DateTime.now().toIso8601String();
-      await dbRef.child('Accounts/$login/lastLoginAt').set(now); // ✅ Обновить время последнего входа
+      await dbRef.child('Accounts/$userKey/lastLoginAt').set(now);
 
       if (mounted) {
         Navigator.pushReplacementNamed(context, '/main');
@@ -392,6 +416,7 @@ class _LoginScreenState extends State<LoginScreen> {
       });
     }
   }
+
 
   @override
   Widget build(BuildContext context) {
@@ -460,21 +485,40 @@ class _LoginWithPinScreenState extends State<LoginWithPinScreen> {
       _errorMessage = '';
     });
 
-    final login = _loginController.text.trim();
-    final pin = _pinController.text.trim();
+    final enteredLogin = _loginController.text.trim();
+    final enteredPin = _pinController.text.trim();
 
     final dbRef = FirebaseDatabase.instance.ref();
-    final snapshot = await dbRef.child('Accounts/$login').get();
+    final snapshot = await dbRef.child('Accounts').get();
 
     if (!snapshot.exists) {
+      setState(() {
+        _loading = false;
+        _errorMessage = "Қате: база бос.";
+      });
+      return;
+    }
+
+    Map? user;
+    String? userKey;
+
+    final accounts = snapshot.value as Map;
+    for (var entry in accounts.entries) {
+      final value = entry.value as Map;
+      if (value['login'] == enteredLogin) {
+        user = value;
+        userKey = entry.key;
+        break;
+      }
+    }
+
+    if (user == null || userKey == null) {
       setState(() {
         _loading = false;
         _errorMessage = "Пайдаланушы табылмады.";
       });
       return;
     }
-
-    final user = snapshot.value as Map;
 
     if (user['pinCode'] == null) {
       setState(() {
@@ -484,15 +528,14 @@ class _LoginWithPinScreenState extends State<LoginWithPinScreen> {
       return;
     }
 
-    if (user['pinCode'] == pin) {
+    if (user['pinCode'] == enteredPin) {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('login', login);
+      await prefs.setString('login', user['login']);
       await prefs.setString('selected_language', user['language']);
       await prefs.setString('selected_topic', user['topic']);
       await prefs.setInt('user_level', user['level'] ?? 1);
       final now = DateTime.now().toIso8601String();
-      await dbRef.child('Accounts/$login/lastLoginAt').set(now); // ✅ Обновить время последнего входа
-
+      await dbRef.child('Accounts/$userKey/lastLoginAt').set(now);
 
       if (mounted) {
         Navigator.pushReplacementNamed(context, '/main');
@@ -504,6 +547,7 @@ class _LoginWithPinScreenState extends State<LoginWithPinScreen> {
       });
     }
   }
+
 
   @override
   Widget build(BuildContext context) {
@@ -652,18 +696,20 @@ class MainScreen extends StatefulWidget {
   final Function(ThemeMode) changeTheme;
   final Function(Locale) changeLocale;
 
-
   const MainScreen({
     super.key,
     required this.currentIndex,
     required this.changeLocale,
     required this.changeTheme,
   });
+
   @override
   State<MainScreen> createState() => _MainScreenState();
 }
+
 class _MainScreenState extends State<MainScreen> {
   late int _selectedIndex;
+  int _previousIndex = 0;
   final List<Widget> _screens = [];
   late StreamSubscription<ConnectivityResult> _subscription;
   bool _isOffline = false;
@@ -673,6 +719,7 @@ class _MainScreenState extends State<MainScreen> {
   void initState() {
     super.initState();
     _selectedIndex = widget.currentIndex;
+    _previousIndex = _selectedIndex;
     _screens.addAll([
       const ProgressScreen(),
       const WordScreen(),
@@ -696,9 +743,9 @@ class _MainScreenState extends State<MainScreen> {
 
   void _showOfflineSnackBar() {
     _snackBarController = ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text("Интернетке қосылу жоқ"),
-        duration: const Duration(days: 1),
+      const SnackBar(
+        content: Text("Интернетке қосылу жоқ"),
+        duration: Duration(days: 1),
         backgroundColor: Colors.red,
         behavior: SnackBarBehavior.floating,
       ),
@@ -718,14 +765,29 @@ class _MainScreenState extends State<MainScreen> {
 
   void _onItemTapped(int index) {
     setState(() {
+      _previousIndex = _selectedIndex;
       _selectedIndex = index;
     });
   }
 
   @override
   Widget build(BuildContext context) {
+    final isForward = _selectedIndex >= _previousIndex;
+
     return Scaffold(
-      body: OrientationBuilder(builder: (context, orientation) => _screens[_selectedIndex]),
+      body: PageTransitionSwitcher(
+        duration: const Duration(milliseconds: 300),
+        transitionBuilder: (child, animation, secondaryAnimation) {
+          final beginOffset = isForward ? const Offset(1.0, 0.0) : const Offset(-1.0, 0.0);
+          return SlideTransition(
+            position: animation.drive(
+              Tween<Offset>(begin: beginOffset, end: Offset.zero).chain(CurveTween(curve: Curves.ease)),
+            ),
+            child: child,
+          );
+        },
+        child: _screens[_selectedIndex],
+      ),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _selectedIndex,
         onTap: _onItemTapped,
@@ -742,6 +804,7 @@ class _MainScreenState extends State<MainScreen> {
     );
   }
 }
+
 
 
 //PROGRESS PAGE--------------------------------------------------------------------------
@@ -1016,6 +1079,7 @@ class _WordScreenState extends State<WordScreen> {
   int currentWordIndex = 0;
   int incorrectTries = 0;
   String currentWord = '';
+  late ConfettiController _confettiController;
   String correctAnswer = '';
   List<String> options = [];
   String learningMode = 'cards';
@@ -1031,6 +1095,13 @@ class _WordScreenState extends State<WordScreen> {
     super.initState();
     _loadLearningMode();
     _loadWordsFromFirebase();
+    _confettiController = ConfettiController(duration: const Duration(seconds: 2));
+  }
+
+  @override
+  void dispose() {
+    _confettiController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadLearningMode() async {
@@ -1046,6 +1117,7 @@ class _WordScreenState extends State<WordScreen> {
     selectedLanguage = prefs.getString('selected_language') ?? 'en';
     final selectedTopic = prefs.getString('selected_topic') ?? 'career';
     final userLevel = prefs.getInt('user_level') ?? 1;
+
 
     final dbRef = FirebaseDatabase.instance.ref();
     final path = 'languages/kazakh/topics/$selectedTopic/level$userLevel';
@@ -1193,27 +1265,54 @@ class _WordScreenState extends State<WordScreen> {
     final dbRef = FirebaseDatabase.instance.ref();
     await dbRef.child('Accounts/$login/level').set(nextLevel);
 
+    _confettiController.play(); // Запускаем конфетти
+
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (_) => AlertDialog(
-        title: const Text("🎉 Құттықтаймыз!"),
-        content: Text("Сіз $currentLevel-деңгейін аяқтадыңыз! Келесі деңгейге өтіңіз."),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              setState(() {
-                currentWordIndex = 0;
-              });
-              _loadWordsFromFirebase();
-            },
-            child: const Text("Келесі деңгей"),
-          )
+      builder: (_) => Stack(
+        children: [
+          Align(
+            alignment: Alignment.topCenter,
+            child: ConfettiWidget(
+              confettiController: _confettiController,
+              blastDirection: 3.14 / 2, // Вниз
+              emissionFrequency: 0.05,
+              numberOfParticles: 20,
+              gravity: 0.3,
+            ),
+          ),
+          Align(
+            alignment: Alignment.bottomCenter,
+            child: ConfettiWidget(
+              confettiController: _confettiController,
+              blastDirection: -3.14 / 2, // Вверх
+              emissionFrequency: 0.05,
+              numberOfParticles: 20,
+              gravity: 0.3,
+            ),
+          ),
+          AlertDialog(
+            title: const Text("🎉 Құттықтаймыз!"),
+            content: Text("Сіз $currentLevel-деңгейін аяқтадыңыз! Келесі деңгейге өтіңіз."),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  setState(() {
+                    currentWordIndex = 0;
+                  });
+                  _loadWordsFromFirebase();
+                },
+                child: const Text("Келесі деңгей"),
+              )
+            ],
+          ),
         ],
       ),
     );
   }
+
 
   void _tryMatch() {
     if (selectedLeft != null && selectedRight != null) {
@@ -1543,11 +1642,14 @@ class _FormScreenState extends State<FormScreen> {
     return base64Encode(saltBytes);
   }
 
-  String hashPassword(String password, String salt) {
-    final bytes = utf8.encode(password + salt);
+  String hashPassword(String password, String saltBase64) {
+    final salt = base64.decode(saltBase64);
+    final bytes = utf8.encode(password) + salt;  // Конкатенация байтов пароля и соли
     final digest = sha256.convert(bytes);
-    return base64Encode(digest.bytes);
+    return base64.encode(digest.bytes);
   }
+
+
 
   Future<void> _registerUser() async {
     setState(() {
@@ -1587,6 +1689,7 @@ class _FormScreenState extends State<FormScreen> {
       "level": defaultLevel,
       "registeredAt": now,
       "lastLoginAt": now,
+      "l_login": login,
     });
 
     final prefs = await SharedPreferences.getInstance();
@@ -1750,8 +1853,6 @@ class _CreatePinScreenState extends State<CreatePinScreen> {
 
 
 //PROFILE SCREEN--------------------------------------------------------------------------------------------------------------
-
-
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
 
@@ -1762,6 +1863,7 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   String login = '';
   String language = '';
+  String email = '';
   String topic = '';
   String registeredAt = '';
   String lastLoginAt = '';
@@ -1788,6 +1890,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  String generateSalt() {
+    final rand = Random.secure();
+    final saltBytes = List<int>.generate(16, (_) => rand.nextInt(256));
+    return base64Encode(saltBytes);
+  }
+
+  // Получить хэш пароля по алгоритму из твоей базы
+  String hashPassword(String password, String saltBase64) {
+    final salt = base64.decode(saltBase64);
+    final bytes = utf8.encode(password) + salt;
+    final digest = sha256.convert(bytes);
+    return base64.encode(digest.bytes);
+  }
+
 
   Future<void> _loadUserData() async {
     final prefs = await SharedPreferences.getInstance();
@@ -1799,7 +1915,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       final user = snapshot.value as Map?;
 
       setState(() {
-        login = currentLogin;
+        login = user?['login'] ?? currentLogin;
+        email = user?['email'] ?? '';
         language = prefs.getString('selected_language') ?? 'Қазақ тілі';
         topic = prefs.getString('selected_topic') ?? 'Байланыс';
         level = prefs.getInt('user_level') ?? 1;
@@ -1810,6 +1927,211 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
 
+  Future<void> _showEditEmailDialog() async {
+    final controller = TextEditingController(text: email);
+    String newEmail = email;
+    await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Поштаны өзгерту'),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(labelText: 'Жаңа почта'),
+          keyboardType: TextInputType.emailAddress,
+          autofocus: true,
+          onChanged: (value) => newEmail = value,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Бас тарту'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              if (newEmail.trim().isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Email енгізіңіз')),
+                );
+                return;
+              }
+              if (newEmail == email) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Email өзгертілмеген')),
+                );
+                return;
+              }
+              final emailRegex = RegExp(r"^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$");
+              if (!emailRegex.hasMatch(newEmail)) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Email дұрыс емес')),
+                );
+                return;
+              }
+
+              final dbRef = FirebaseDatabase.instance.ref();
+              await dbRef.child('Accounts/$login').update({
+                'email': newEmail,
+              });
+
+              setState(() {
+                email = newEmail;
+              });
+
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Email сәтті жаңартылды!')),
+              );
+              Navigator.pop(context);
+            },
+            child: const Text('Сақтау'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showEditLoginDialog() async {
+    final controller = TextEditingController(text: login);
+    String newLogin = login;
+
+    await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Логинді өзгерту'),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(labelText: 'Жаңа логин'),
+          onChanged: (value) => newLogin = value.trim(),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Бас тарту'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              if (newLogin.isEmpty || newLogin == login) return;
+
+              final dbRef = FirebaseDatabase.instance.ref();
+              final exists = (await dbRef.child('Accounts/$newLogin').get()).exists;
+              if (exists) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Бұл логин бос емес')),
+                );
+                return;
+              }
+
+              final oldData = (await dbRef.child('Accounts/$login').get()).value as Map?;
+              if (oldData != null) {
+                await dbRef.child('Accounts/$newLogin').set({
+                  ...oldData,
+                  'login': newLogin,
+                });
+                await dbRef.child('Accounts/$login').remove();
+                final prefs = await SharedPreferences.getInstance();
+                await prefs.setString('login', newLogin);
+
+                setState(() => login = newLogin);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Логин сәтті өзгертілді')),
+                );
+              }
+
+              Navigator.pop(context);
+            },
+            child: const Text('Сақтау'),
+          ),
+        ],
+      ),
+    );
+  }
+
+
+  // Диалог для изменения пароля
+  Future<void> _showChangePasswordDialog() async {
+    String oldPassword = '';
+    String newPassword = '';
+
+    await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Құпиясөзді өзгерту'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              obscureText: true,
+              decoration: const InputDecoration(labelText: 'Ескі құпиясөз'),
+              onChanged: (value) => oldPassword = value,
+            ),
+            TextField(
+              obscureText: true,
+              decoration: const InputDecoration(labelText: 'Жаңа құпиясөз'),
+              onChanged: (value) => newPassword = value,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Бас тарту'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              if (oldPassword.isEmpty || newPassword.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Барлық өрістерді толтырыңыз')),
+                );
+                return;
+              }
+              if (oldPassword == newPassword) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Жаңа құпиясөз ескіден өзгеше болу керек')),
+                );
+                return;
+              }
+
+              final dbRef = FirebaseDatabase.instance.ref();
+              final snapshot = await dbRef.child('Accounts/$login').get();
+              final user = snapshot.value as Map?;
+              if (user == null) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Пайдаланушы табылмады')),
+                );
+                return;
+              }
+
+              final savedSalt = user['salt'] as String? ?? '';
+              final savedHash = user['passwordHash'] as String? ?? '';
+
+              final oldHash = hashPassword(oldPassword, savedSalt);
+
+              if (oldHash != savedHash) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Ескі құпиясөз дұрыс емес')),
+                );
+                return;
+              }
+
+              // Генерация новой соли
+              final newSalt = generateSalt(); // используй свою функцию
+              final newHash = hashPassword(newPassword, newSalt);
+
+              await dbRef.child('Accounts/$login').update({
+                'passwordHash': newHash,
+                'salt': newSalt,
+              });
+
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Құпиясөз сәтті ауыстырылды!')),
+              );
+              Navigator.pop(context);
+            },
+            child: const Text('Сақтау'),
+          ),
+        ],
+      ),
+    );
+  }
 
 
   @override
@@ -1833,9 +2155,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
         padding: const EdgeInsets.all(24.0),
         child: Column(
           children: [
+            Row(
+              children: [
+                const Icon(Icons.email),
+                const SizedBox(width: 12),
+                Expanded(child: Text("Почта: $email")),
+                IconButton(
+                  icon: const Icon(Icons.edit),
+                  tooltip: 'Поштаны өзгерту',
+                  onPressed: _showEditEmailDialog,
+                ),
+              ],
+            ),
+            const Divider(),
             ListTile(
-              leading: const Icon(Icons.person),
+              leading: const Icon(Icons.account_circle),
               title: Text("Логин: $login"),
+              trailing: IconButton(
+                icon: const Icon(Icons.edit),
+                tooltip: 'Логинді өзгерту',
+                onPressed: _showEditLoginDialog,
+              ),
             ),
             ListTile(
               leading: const Icon(Icons.language),
@@ -1857,7 +2197,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
               leading: const Icon(Icons.login),
               title: Text("Соңғы кіру: $lastLoginAt"),
             ),
-
+            ElevatedButton.icon(
+              icon: const Icon(Icons.lock),
+              label: const Text('Құпиясөзді өзгерту'),
+              onPressed: _showChangePasswordDialog,
+              style: ElevatedButton.styleFrom(
+                minimumSize: const Size.fromHeight(48),
+              ),
+            ),
           ],
         ),
       ),
