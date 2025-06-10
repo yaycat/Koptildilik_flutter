@@ -25,3 +25,42 @@ This Flutter application demonstrates **data persistence**, **JSON serialization
 
 ## 📂 Project Structure
 
+```
+lib/
+├── screens/
+│   ├── about/
+│   │   └── about_screen.dart
+│   ├── auth/
+│   │   ├── auth_screen.dart
+│   │   ├── login_screen.dart
+│   │   ├── login_with_pin_screen.dart
+│   │   └── register_screen.dart
+│   ├── common/
+│   │   ├── first_screen.dart
+│   │   ├── second_screen.dart
+│   │   └── third_screen.dart
+│   ├── home/
+│   │   ├── choose_screen.dart
+│   │   └── main_screen.dart
+│   ├── pin/
+│   │   └── create_pin_screen.dart
+│   ├── profile/
+│   │   └── profile_screen.dart
+│   ├── progress/
+│   │   └── progress_screen.dart
+│   ├── search/
+│   │   └── search_screen.dart
+│   ├── settings/
+│   │   └── settings_screen.dart
+│   └── words/
+│       └── word_screen.dart
+├── services/
+│   ├── user.dart
+│   └── user_storage.dart
+├── app.dart
+├── global.dart
+└── main.dart
+
+pubspec.yaml
+```
+
