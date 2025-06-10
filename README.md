@@ -24,7 +24,7 @@ This Flutter application demonstrates **data persistence**, **JSON serialization
 ---
 
 ## 📂 Project Structure
-
+ 
 ```
 lib/
 ├── screens/
