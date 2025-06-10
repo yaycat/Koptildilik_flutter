@@ -1,0 +1,1 @@
+bool isGuest = false;
